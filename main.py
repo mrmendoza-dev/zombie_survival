@@ -6,8 +6,6 @@ from config import *
 
 # Initialize pygame and its mixer first, before any other imports
 pygame.init()
-pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
-pygame.mixer.set_num_channels(16)  # Increase available audio channels
 
 # Initialize fonts
 game_font = pygame.font.SysFont(None, 32)
@@ -27,33 +25,13 @@ from core.game_mechanics import GameMechanics
 from core.manager import EnvironmentManager
 from core.draw_game import GameRenderer
 from core.inventory_system import InventorySystem
+from core.sound_controller import SoundController
+from core.player import Player
+from core.enemy_system import EnemySystem
 
-
-
-pickup_sound = pygame.mixer.Sound('assets/sounds/pickup.mp3')
-
-
-# Setup dedicated sound channels
-channels = {
-    'music': pygame.mixer.Channel(0),
-    'weapon': pygame.mixer.Channel(1),
-    'hit': pygame.mixer.Channel(2),
-    'reload': pygame.mixer.Channel(3),
-    'lethal': pygame.mixer.Channel(4),
-    'pickup': pygame.mixer.Channel(5),
-    'horde': pygame.mixer.Channel(6)  # New channel for zombie horde sound
-}
-
-# Set volumes
-channels['music'].set_volume(0.5)
-channels['weapon'].set_volume(0.4)
-channels['hit'].set_volume(0.3)
-channels['reload'].set_volume(0.4)
-channels['lethal'].set_volume(0.5)
-channels['pickup'].set_volume(0.4)
-channels['horde'].set_volume(0.3)  # Set appropriate volume for horde sound
-
-player_image = pygame.image.load('assets/player/player-richter.gif')
+sound_controller = SoundController()
+player = Player(WIDTH, HEIGHT)
+enemy_system = EnemySystem(WIDTH, HEIGHT, player, sound_controller.get_channels(), sound_controller)
 
 # Try to load additional environment textures
 try:
@@ -66,13 +44,6 @@ except:
     concrete_image = None
     sewer_background_image = None
 
-# Load audio
-main_music = pygame.mixer.Sound('assets/music/default-music.wav')
-room_music = pygame.mixer.Sound('assets/music/chill-music.wav')
-sewer_music = pygame.mixer.Sound('assets/music/sewer-music.wav')
-# Load zombie horde sound
-zombie_horde_sound = pygame.mixer.Sound('assets/sounds/zombie-horde.mp3')
-
 # Try to load door image, or create a fallback
 try:
     door_image = pygame.image.load('assets/objects/door.jpg')
@@ -83,39 +54,34 @@ except:
     door_image.fill((139, 69, 19))  # Brown color
 
 # Scale player image
-player_width, player_height = 60, 80
-player_image = pygame.transform.scale(player_image, (player_width, player_height))
 
 # Initialize sounds that weren't loaded at import time
 init_zombie_sounds()
 init_weapon_sounds()
 
-
-
-
 # Initialize game systems
 game_state = GameState(WIDTH, HEIGHT)
 game_ui = GameUI(WIDTH, HEIGHT, screen)
 # Initialize game renderer
-game_renderer = GameRenderer(screen, WIDTH, HEIGHT, player_width, player_height, player_image, floor_height=FLOOR_HEIGHT)
-game_mechanics = GameMechanics(game_state, WIDTH, HEIGHT, player_width, player_height, channels)
+game_renderer = GameRenderer(screen, WIDTH, HEIGHT, player)
+game_mechanics = GameMechanics(game_state, WIDTH, HEIGHT, player, sound_controller.get_channels())
+
+# Set game state reference in enemy system
+enemy_system.set_game_state(game_state)
 
 # Initialize the Environment Manager
-env_manager = EnvironmentManager(WIDTH, HEIGHT, channels)
+env_manager = EnvironmentManager(WIDTH, HEIGHT, sound_controller.get_channels())
 env_manager.load_environments({
     'building_wall_image': building_wall_image,
     'concrete_image': concrete_image,
-    'main_music': main_music,
-    'room_music': room_music,
-    'sewer_music': sewer_music
+    'main_music': sound_controller.music['main'],
+    'room_music': sound_controller.music['room'],
+    'sewer_music': sound_controller.music['sewer']
 })
 
 # Initialize the Inventory System
-inventory = InventorySystem(max_slots=20, channels=channels)
+inventory = InventorySystem(max_slots=20, channels=sound_controller.get_channels())
 inventory.initialize_from_default()
-
-
-
 
 # Load environment backgrounds into the renderer
 for env_name, environment in env_manager.environments.items():
@@ -289,8 +255,8 @@ def check_door_collision():
     player_rect = pygame.Rect(
         game_state.player_x,
         game_state.player_y,
-        player_width,
-        player_height
+        player.width,
+        player.height
     )
     
     # Use environment manager to check door collisions
@@ -308,8 +274,8 @@ def handle_door_interaction(keys):
             player_rect = pygame.Rect(
                 game_state.player_x,
                 game_state.player_y,
-                player_width,
-                player_height
+                player.width,
+                player.height
             )
             
             # Get player position in new environment, passing player rect and door object
@@ -344,8 +310,8 @@ def check_room_interactions(keys):
     player_rect = pygame.Rect(
         game_state.player_x,
         game_state.player_y,
-        player_width,
-        player_height
+        player.width,
+        player.height
     )
     
     # Use environment manager to check item interactions
@@ -356,13 +322,13 @@ def check_room_interactions(keys):
         if item.properties['item_type'] == 'ammo':
             # Add ammo pack to inventory
             inventory.add_item('ammo_pack')
-            channels['pickup'].play(pickup_sound)
+            sound_controller.play_sound('pickup', 'pickup')
             game_ui.show_message("Picked up Ammo Pack", 2000)
         
         elif item.properties['item_type'] == 'health':
             # Add health pack to inventory
             inventory.add_item('health_pack')
-            channels['pickup'].play(pickup_sound)
+            sound_controller.play_sound('pickup', 'pickup')
             game_ui.show_message("Picked up Health Pack", 2000)
             
         elif item.properties['item_type'] == 'lethal_crate':
@@ -373,11 +339,11 @@ def check_room_interactions(keys):
             if 'molotov' not in inventory.item_database or inventory.get_lethal_quantity() < 3:
                 if 'molotov' in lethal_types:
                     inventory.add_item('molotov', 3)
-                    channels['pickup'].play(pickup_sound)
+                    sound_controller.play_sound('pickup', 'pickup')
                     game_ui.show_message(f"Picked up Molotovs", 2000)
                 else:
                     inventory.add_item('grenade', 3)
-                    channels['pickup'].play(pickup_sound)
+                    sound_controller.play_sound('pickup', 'pickup')
                     game_ui.show_message(f"Picked up Grenades", 2000)
         
         # Mark the item as used (starts cooldown)
@@ -388,8 +354,8 @@ def check_platform_collision():
     player_rect = pygame.Rect(
         game_state.player_x,
         game_state.player_y + 1,  # Check slightly below player to detect ground
-        player_width,
-        player_height
+        player.width,
+        player.height
     )
     
     # Get platforms from current environment
@@ -436,40 +402,11 @@ def handle_jump_down(keys):
 
 def update_horde_sound():
     """Update the zombie horde sound based on wave state"""
-    current_time = pygame.time.get_ticks()
-    
-    # Check if we're in the last 15 seconds of intermission
-    if not game_state.wave_active:
-        time_left = max(0, game_state.intermission_end - current_time)
-        
-        # If we're in the last 15 seconds of intermission (15000ms)
-        if time_left <= 15000:
-            # Calculate volume based on time remaining (0.0 to 0.7 volume)
-            # As time_left approaches 0, volume approaches 0.7
-            volume = 0.7 * (1 - (time_left / 15000))
-            
-            # Start playing if not already playing
-            if not channels['horde'].get_busy():
-                channels['horde'].play(zombie_horde_sound, loops=-1)
-                
-            # Update the volume
-            channels['horde'].set_volume(volume)
-        else:
-            # Not in last 15 seconds, stop sound if playing
-            if channels['horde'].get_busy():
-                channels['horde'].fadeout(1000)  # Fade out over 1 second
-    # Normal wave active behavior
-    elif game_state.wave_active and not game_state.in_safe_room:
-        # Reset to normal volume during active wave
-        channels['horde'].set_volume(0.3)
-        
-        # Start playing if not already playing
-        if not channels['horde'].get_busy():
-            channels['horde'].play(zombie_horde_sound, loops=-1)  # Loop indefinitely
-    else:
-        # Stop the sound if it's playing and wave is not active or player is in room
-        if channels['horde'].get_busy():
-            channels['horde'].fadeout(1000)  # Fade out over 1 second
+    sound_controller.update_horde_sound(
+        wave_active=game_state.wave_active,
+        in_safe_room=game_state.in_safe_room,
+        intermission_end=game_state.intermission_end
+    )
 
 def main():
     running = True
@@ -519,7 +456,7 @@ def main():
         weapon_type.sound.set_volume(0.4)  # Lower volume slightly
     
     # Play initial music
-    env_manager.get_current_environment().music.play(loops=-1)
+    sound_controller.play_music('main')
     
     # Set initial environment in game state
     game_state.current_environment = env_manager.get_current_environment().name
@@ -641,7 +578,7 @@ def main():
                     # Purchase selected upgrade
                     if game_state.purchase_upgrade():
                         # Play purchase sound
-                        channels['pickup'].play(pickup_sound)
+                        sound_controller.play_sound('pickup', 'pickup')
                 elif event.key == pygame.K_r and not game_state.in_safe_room and not game_state.game_over:
                     # Manual weapon reload
                     if inventory.reload_weapon():
@@ -658,11 +595,11 @@ def main():
                         # Otherwise toggle pause state
                         game_state.paused = not game_state.paused
                         if game_state.paused:
-                            # Pause the music
-                            channels['music'].pause()
+                            # Pause all sounds
+                            sound_controller.pause_all()
                         else:
-                            # Resume the music
-                            channels['music'].unpause()
+                            # Resume all sounds
+                            sound_controller.unpause_all()
                 elif event.key == pygame.K_c:
                     # Cycle weapons
                     new_weapon_idx = inventory.cycle_weapon()
@@ -763,32 +700,51 @@ def main():
                 # Only handle player movement when in safe areas (room or rooftop), no combat
                 game_mechanics.move_player(keys, current_env.platforms)
             else:
-
-
                 # Full gameplay when in any combat area (building or street)
                 game_mechanics.move_player(keys, current_env.platforms, game_state.stats["move_speed"])
                 game_mechanics.handle_shooting(keys, mouse_buttons, mouse_pos)
                 game_mechanics.move_bullets()
-                game_mechanics.move_zombies()
+                enemy_system.move_zombies()
                 game_mechanics.update_lethals(current_env.platforms)
-                game_mechanics.check_collisions()
                 
+                # Check collisions using enemy system
+                bullets_to_remove = enemy_system.check_bullet_collisions(
+                    game_state.bullets,
+                    game_mechanics,  # Pass game_mechanics for explosion creation
+                    game_state.add_score  # Pass score callback
+                )
+                # Remove bullets that hit zombies
+                for i in sorted(bullets_to_remove, reverse=True):
+                    if i < len(game_state.bullets):
+                        game_state.bullets.pop(i)
+                
+                # Check player collision with zombies
+                should_damage, damage = enemy_system.check_player_collision(
+                    game_state.player_x,
+                    game_state.player_y,
+                    game_state.last_damage_time,
+                    game_state.damage_cooldown
+                )
+                if should_damage:
+                    game_state.take_damage(damage)
+                
+                # Check explosion collisions
+                enemy_system.check_explosion_collisions(
+                    game_state.explosions,
+                    game_mechanics.get_explosion_damage if hasattr(game_mechanics, 'get_explosion_damage') else None,
+                    game_state.add_score
+                )
                 
                 # Get current equipped weapon stats for game mechanics
                 equipped_weapon = inventory.get_equipped_weapon()
-                # if equipped_weapon:                    
-                    # In GOD MODE, always keep weapons fully loaded
-                    # if GOD_MODE:
-                    #     equipped_weapon.current_ammo = equipped_weapon.max_ammo
-                    #     game_state.weapon_ammo[game_state.current_weapon] = equipped_weapon.max_ammo
-                    
+                
                 # Sync ammo count from game mechanics back to inventory
                 if equipped_weapon and game_state.current_weapon in game_state.weapon_ammo:
                     equipped_weapon.current_ammo = game_state.weapon_ammo[game_state.current_weapon]
                 
                 # Only spawn during active wave periods and not in safe areas
                 if game_state.wave_active and not game_state.in_safe_room:
-                    game_mechanics.spawn_zombies(game_state.base_spawn_rate)
+                    enemy_system.spawn_zombies(current_env.name, game_state.base_spawn_rate)
                     
                 game_mechanics.update_weapon_state()
         

@@ -199,7 +199,6 @@ class GameUI:
         equipment_height = 50  # Fixed height for all weapons
         
         weapon = WEAPON_TYPES[current_weapon]
-        lethal = LETHAL_TYPES[current_lethal]
         
         # Create semi-transparent black background
         bg_surface = pygame.Surface((equipment_box_size * 2 + equipment_margin, equipment_height), pygame.SRCALPHA)
@@ -242,34 +241,44 @@ class GameUI:
         lethal_x = self.WIDTH - (equipment_box_size + equipment_margin)
         lethal_y = equipment_margin
         
-        # Calculate width while preserving aspect ratio
-        lethal_sprite_height = equipment_height - 10
-        lethal_sprite_width = int(lethal.sprite.get_width() * (lethal_sprite_height / lethal.sprite.get_height()))
-        scaled_lethal = pygame.transform.scale(lethal.sprite, (lethal_sprite_width, lethal_sprite_height))
-        
         # Draw lethal background
         screen.blit(bg_surface, (lethal_x, lethal_y))
         
-        # Center the lethal sprite vertically
-        lethal_y_offset = (equipment_height - lethal_sprite_height) // 2
-        screen.blit(scaled_lethal, (lethal_x + 5, lethal_y + lethal_y_offset))
-        
-        # Draw small dots to represent lethal count instead of text
-        max_dots = 5  # Maximum dots to show
-        dot_size = 4
-        dot_spacing = 8
-        dots_to_show = min(lethal_ammo[current_lethal], max_dots)
-        
-        for i in range(dots_to_show):
-            dot_x = lethal_x + 5 + (i * dot_spacing)
-            dot_y = lethal_y + equipment_height - dot_size - 3
-            pygame.draw.circle(screen, WHITE, (dot_x, dot_y), dot_size)
+        # Only draw lethal equipment if one is selected
+        if current_lethal is not None and current_lethal in LETHAL_TYPES:
+            lethal = LETHAL_TYPES[current_lethal]
             
-        # If we have more lethals than max dots, show a "+" indicator
-        if lethal_ammo[current_lethal] > max_dots:
-            plus_text = self.small_font.render("+", True, WHITE)
-            screen.blit(plus_text, (lethal_x + 5 + (max_dots * dot_spacing), 
-                                  lethal_y + equipment_height - plus_text.get_height() - 3))
+            # Calculate width while preserving aspect ratio
+            lethal_sprite_height = equipment_height - 10
+            lethal_sprite_width = int(lethal.sprite.get_width() * (lethal_sprite_height / lethal.sprite.get_height()))
+            scaled_lethal = pygame.transform.scale(lethal.sprite, (lethal_sprite_width, lethal_sprite_height))
+            
+            # Center the lethal sprite vertically
+            lethal_y_offset = (equipment_height - lethal_sprite_height) // 2
+            screen.blit(scaled_lethal, (lethal_x + 5, lethal_y + lethal_y_offset))
+            
+            # Draw small dots to represent lethal count instead of text
+            max_dots = 5  # Maximum dots to show
+            dot_size = 4
+            dot_spacing = 8
+            dots_to_show = min(lethal_ammo.get(current_lethal, 0), max_dots)
+            
+            for i in range(dots_to_show):
+                dot_x = lethal_x + 5 + (i * dot_spacing)
+                dot_y = lethal_y + equipment_height - dot_size - 3
+                pygame.draw.circle(screen, WHITE, (dot_x, dot_y), dot_size)
+                
+            # If we have more lethals than max dots, show a "+" indicator
+            if lethal_ammo.get(current_lethal, 0) > max_dots:
+                plus_text = self.small_font.render("+", True, WHITE)
+                screen.blit(plus_text, (lethal_x + 5 + (max_dots * dot_spacing), 
+                                      lethal_y + equipment_height - plus_text.get_height() - 3))
+        else:
+            # Draw a placeholder or empty slot indicator when no lethal is selected
+            empty_text = self.small_font.render("No Lethal", True, (150, 150, 150))
+            text_x = lethal_x + (equipment_box_size - empty_text.get_width()) // 2
+            text_y = lethal_y + (equipment_height - empty_text.get_height()) // 2
+            screen.blit(empty_text, (text_x, text_y))
         
         # Draw mini-map below the equipment only if SHOW_UI_MAP is True
         if SHOW_UI_MAP:

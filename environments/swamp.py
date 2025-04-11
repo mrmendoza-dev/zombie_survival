@@ -79,7 +79,7 @@ class SwampEnvironment(Environment):
             objects=objects,
             platforms=platforms,
             entry_position=entry_position,
-            exit_position=entry_position  # Same as entry for simplicity
+            exit_position=entry_position
         )
         
         # Store environment properties

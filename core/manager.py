@@ -13,6 +13,7 @@ from environments.city import CityEnvironment
 from environments.lake import LakeEnvironment
 from environments.swamp import SwampEnvironment
 from environments.rooftop import RooftopEnvironment
+from config import FLOOR_HEIGHT
 
 class WorldMap:
     """Centralized definition of the game world structure and connections"""
@@ -110,8 +111,7 @@ class EnvironmentManager:
         self.world_map = WorldMap()
         
         # Define floor height for consistent positioning
-        self.floor_height = 30
-        self.floor_y = height - self.floor_height
+        self.floor_y = height - FLOOR_HEIGHT
         self.floor_spacing = 100
         
         # Door definitions for reference - updated with floor-relative positioning
@@ -202,21 +202,23 @@ class EnvironmentManager:
         """Get the world map object"""
         return self.world_map
     
-    def transition_to(self, environment_name: str, player_rect: pygame.Rect = None, door_obj: MapObject = None) -> Tuple[int, int]:
+    def transition_to(self, environment_name: str, player_rect: pygame.Rect = None, door_obj: Optional[GameObject] = None) -> Optional[Tuple[int, int]]:
         """
-        Transition to a different environment
+        Transition to a new environment
         
-        Parameters:
-        - environment_name: The target environment to transition to
-        - player_rect: Optional player rectangle for position-aware transitions
-        - door_obj: Optional door object that triggered the transition
-        
-        Returns the new player position (x, y) and triggers enemy despawn
+        Args:
+            environment_name: Name of environment to transition to
+            player_rect: Current player rectangle for position-aware transitions
+            door_obj: Door object that triggered the transition
+            
+        Returns:
+            Optional tuple of (x, y) coordinates for player position in new environment
         """
+        # Check cooldown
         if self.transition_cooldown > 0:
-            # Prevent transitions during cooldown
+            self.transition_cooldown -= 1
             return None
-        
+            
         if environment_name in self.environments:
             # Get the target environment
             target_env = self.environments[environment_name]
@@ -230,6 +232,9 @@ class EnvironmentManager:
             # Change music
             self.channels['music'].stop()
             pygame.time.delay(100)  # Brief delay
+            print(self.channels['music'])
+            print(target_env.music)
+            
             self.channels['music'].play(target_env.music, loops=-1)
             
             # Set as current environment

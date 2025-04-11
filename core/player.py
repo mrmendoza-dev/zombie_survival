@@ -2,6 +2,8 @@ import pygame
 import math
 from typing import Dict, List, Tuple, Optional, Set
 
+from config import *
+
 
 class Player:
     """
@@ -12,16 +14,16 @@ class Player:
     def __init__(self, 
                  screen_width: int, 
                  screen_height: int,
-                 player_width: int = 50, 
-                 player_height: int = 50,
-                 gravity: float = 0.5,
-                 player_speed: float = 4,
-                 jump_strength: float = 10,
-                 max_health: int = 10):
+                 gravity: float = GRAVITY,
+                 player_speed: float = PLAYER_SPEED,
+                 jump_strength: float = JUMP_STRENGTH,
+                 max_health: int = BASE_HEALTH):
         
         # Player dimensions
-        self.width = player_width
-        self.height = player_height
+        self.width = PLAYER_WIDTH
+        self.height = PLAYER_HEIGHT
+        player_image = pygame.image.load('assets/player/player-richter.gif')
+        self.sprite = pygame.transform.scale(player_image, (self.width, self.height))
         
         # Screen dimensions
         self.screen_width = screen_width

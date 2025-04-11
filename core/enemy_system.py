@@ -2,8 +2,11 @@ import pygame
 import math
 import random
 from typing import Dict, List, Tuple, Optional, Set
+from core import player
+from core.player import Player
+from core.sound_controller import SoundController
 from zombie_types import ZOMBIE_TYPES, zombie_width, zombie_height, spit_projectiles, zombie_deaths
-
+from config import *
 
 class EnemySystem:
     """
@@ -14,38 +17,36 @@ class EnemySystem:
     def __init__(self, 
                  screen_width: int, 
                  screen_height: int,
-                 player_width: int = 50,
-                 player_height: int = 50,
+                 player: Player,
                  channels: Dict = None,
-                 gravity: float = 0.5,
-                 floor_height: int = 30):
+                 sound_controller: SoundController = None):
         
         # Screen dimensions
         self.screen_width = screen_width
         self.screen_height = screen_height
         
         # Player dimensions (for collision)
-        self.player_width = player_width
-        self.player_height = player_height
-        
-        # Physics properties
-        self.gravity = gravity
-        self.floor_height = floor_height
-        
-        # Enemy collections
-        self.zombies = []
+        self.player = player
+                
+        # Game state reference (will be set later)
+        self.game_state = None
         
         # Sound channels
         self.channels = channels
+        self.sound_controller = sound_controller
         
         # Sound cooldowns to prevent overlapping
         self.last_hit_sound = 0
         self.hit_sound_cooldown = 70  # ms
         
         # Spawn rate modifier for difficulty scaling
-        self.spawn_rate_multiplier = 1.0
+        self.spawn_rate_multiplier = BASE_SPAWN_RATE_MULTIPLIER
         
-    def spawn_zombies(self, current_environment: str, spawn_rate_multiplier: float = 1.0):
+    def set_game_state(self, game_state):
+        """Set the game state reference to access shared data"""
+        self.game_state = game_state
+        
+    def spawn_zombies(self, current_environment: str, spawn_rate_multiplier: float = BASE_SPAWN_RATE_MULTIPLIER):
         """
         Spawn zombies based on spawn rates and environment
         
@@ -53,6 +54,9 @@ class EnemySystem:
             current_environment: Current environment name
             spawn_rate_multiplier: Multiplier for spawn rates (higher = more spawns)
         """
+        if not self.game_state:
+            return
+            
         for zombie_type in ZOMBIE_TYPES.values():
             # Adjust spawn rate based on difficulty
             adjusted_spawn_rate = max(1, int(zombie_type.spawn_rate / spawn_rate_multiplier))
@@ -60,7 +64,7 @@ class EnemySystem:
             if random.randint(1, adjusted_spawn_rate) == 1:
                 scaled_height = zombie_height * zombie_type.size
                 # Calculate y position so that the bottom of the zombie aligns with the ground
-                zombie_y = self.screen_height - scaled_height - self.floor_height
+                zombie_y = self.screen_height - scaled_height - FLOOR_HEIGHT
                 
                 # Set spawn position based on environment
                 if current_environment == 'streets' or current_environment == 'forest':
@@ -80,28 +84,27 @@ class EnemySystem:
                     new_zombie.append(0)  # Add vertical velocity
                     new_zombie.append(0)  # Add horizontal velocity
                 
-                self.zombies.append(new_zombie)
+                self.game_state.zombies.append(new_zombie)
     
-    def move_zombies(self, player_x: int, player_y: int):
+    def move_zombies(self):
         """
         Update the position and state of all zombies
-        
-        Args:
-            player_x: Player's x position
-            player_y: Player's y position
         """
+        if not self.game_state:
+            return
+            
         current_time = pygame.time.get_ticks()
         
-        for zombie in self.zombies[:]:  # Use a copy of the list to allow modification
+        for zombie in self.game_state.zombies[:]:  # Use copy of game_state zombies list
             # Unpack zombie data
             zombie_x, zombie_y, zombie_type_key, health, last_action_time, state = zombie[0], zombie[1], zombie[2], zombie[3], zombie[4] if len(zombie) > 4 else 0, zombie[5] if len(zombie) > 5 else "normal"
             
             # Get zombie type properties
             zombie_type = ZOMBIE_TYPES[zombie_type_key]
             
-            # Calculate distance to player
-            dx = player_x - zombie_x
-            dy = player_y - zombie_y
+            # Calculate distance to player using game_state player position
+            dx = self.game_state.player_x - zombie_x
+            dy = self.game_state.player_y - zombie_y
             distance = ((dx ** 2) + (dy ** 2)) ** 0.5
             
             # Ensure zombie list has the required attributes
@@ -149,15 +152,15 @@ class EnemySystem:
             # Handle jumping state for leapers
             if state == "jumping":
                 # Apply gravity
-                zombie[6] += 0.5  # Gravity
+                zombie[6] += GRAVITY  # Gravity
                 
                 # Update position based on velocity
                 zombie[0] += zombie[7]  # Horizontal movement
                 zombie[1] += zombie[6]  # Vertical movement
                 
                 # Check if landed
-                if zombie[6] > 0 and zombie[1] >= self.screen_height - self.player_height:
-                    zombie[1] = self.screen_height - self.player_height  # Snap to floor
+                if zombie[6] > 0 and zombie[1] >= self.screen_height - self.player.height:
+                    zombie[1] = self.screen_height - self.player.height  # Snap to floor
                     zombie[5] = "normal"  # Reset state
                     zombie[4] = current_time  # Update last action time for cooldown
                 
@@ -183,17 +186,17 @@ class EnemySystem:
                     
                     # Apply gravity
                     if len(zombie) > 6:  # Check if we have velocity components
-                        zombie[6] += 0.5  # Apply gravity to vertical velocity
+                        zombie[6] += GRAVITY  # Apply gravity to vertical velocity
                         zombie[1] += zombie[6]  # Apply vertical velocity
                         
                         # Check if on ground
-                        if zombie[1] >= self.screen_height - self.player_height:
-                            zombie[1] = self.screen_height - self.player_height  # Snap to floor
+                        if zombie[1] >= self.screen_height - self.player.height:
+                            zombie[1] = self.screen_height - self.player.height  # Snap to floor
                             zombie[6] = 0  # Reset vertical velocity on ground
                     else:
                         # Ensure zombies stay on the floor
-                        if zombie[1] > self.screen_height - self.player_height:
-                            zombie[1] = self.screen_height - self.player_height
+                        if zombie[1] > self.screen_height - self.player.height:
+                            zombie[1] = self.screen_height - self.player.height
         
         # Move spit projectiles
         for projectile in spit_projectiles[:]:  # Use copy to allow removal
@@ -206,15 +209,13 @@ class EnemySystem:
                 projectile[1] < 0 or projectile[1] > self.screen_height):
                 spit_projectiles.remove(projectile)
 
-    def check_player_collision(self, player_x: int, player_y: int, player_width: int, player_height: int, last_damage_time: int, damage_cooldown: int):
+    def check_player_collision(self, player_x: int, player_y: int, last_damage_time: int, damage_cooldown: int):
         """
         Check for collisions between player and zombies/projectiles
         
         Args:
             player_x: Player's x position
             player_y: Player's y position
-            player_width: Player's width
-            player_height: Player's height
             last_damage_time: Time of last damage taken
             damage_cooldown: Cooldown time between damage
             
@@ -231,17 +232,17 @@ class EnemySystem:
         player_rect = pygame.Rect(
             player_x, 
             player_y, 
-            player_width, 
-            player_height
+            self.player.width, 
+            self.player.height
         )
         
         # Check zombie collisions
-        for zombie in self.zombies:
+        for zombie in self.game_state.zombies:
             zombie_type = ZOMBIE_TYPES[zombie[2]]
             
             # Scale zombie hitbox based on size
-            zombie_width_scaled = player_width * zombie_type.size
-            zombie_height_scaled = player_height * zombie_type.size
+            zombie_width_scaled = self.player.width * zombie_type.size
+            zombie_height_scaled = self.player.height * zombie_type.size
             
             zombie_rect = pygame.Rect(
                 zombie[0], 
@@ -285,15 +286,15 @@ class EnemySystem:
         bullets_to_remove = []
         
         # Early exit if no zombies or bullets
-        if not self.zombies or not bullets:
+        if not self.game_state.zombies or not bullets:
             return bullets_to_remove
         
-        for zombie in self.zombies[:]:  # Use copy for safe removal
+        for zombie in self.game_state.zombies[:]:  # Use copy for safe removal
             zombie_type = ZOMBIE_TYPES[zombie[2]]
             
             # Scale zombie hitbox based on size
-            zombie_width_scaled = self.player_width * zombie_type.size
-            zombie_height_scaled = self.player_height * zombie_type.size
+            zombie_width_scaled = self.player.width * zombie_type.size
+            zombie_height_scaled = self.player.height * zombie_type.size
             
             zombie_rect = pygame.Rect(
                 zombie[0], 
@@ -317,6 +318,23 @@ class EnemySystem:
                 if zombie_rect.colliderect(bullet_rect):
                     # Apply damage based on bullet's damage value
                     damage = bullet[4]  # Use the damage value directly from the bullet
+                    
+                    # Play random hit-flesh sound
+                    if current_time - self.last_hit_sound > self.hit_sound_cooldown:
+                        # Get list of available hit flesh sounds
+                        hit_sounds = [
+                            'hit-flesh-1',
+                            'hit-flesh-2',
+                            'hit-flesh-3'
+                        ]
+                        
+                        # Pick a random hit sound
+                        hit_sound = random.choice(hit_sounds)
+                        
+                        # Play the selected hit sound
+                        if self.channels and 'hit' in self.channels:
+                            self.channels['hit'].play(self.sound_controller.sounds[hit_sound])
+                            self.last_hit_sound = current_time
                     
                     # Apply damage to zombie
                     zombie[3] -= damage
@@ -348,7 +366,7 @@ class EnemySystem:
                         ])
                         
                         # Remove zombie
-                        self.zombies.remove(zombie)
+                        self.game_state.zombies.remove(zombie)
                         
                         # Add score for kill
                         if add_score_callback:
@@ -368,14 +386,14 @@ class EnemySystem:
             get_explosion_damage_func: Function to calculate explosion damage
             add_score_callback: Optional callback function to add score
         """
-        if not self.zombies or not explosions:
+        if not self.game_state.zombies or not explosions:
             return
             
         # Process explosion damage
         for i, explosion in enumerate(explosions):
             explosion_type = explosion[2]
             
-            for zombie in self.zombies[:]:
+            for zombie in self.game_state.zombies[:]:
                 zombie_type = ZOMBIE_TYPES[zombie[2]]
                 zombie_center_x = zombie[0] + (zombie_width * zombie_type.size) / 2
                 zombie_center_y = zombie[1] + (zombie_height * zombie_type.size) / 2
@@ -407,7 +425,7 @@ class EnemySystem:
                         ])
                         
                         # Remove zombie
-                        self.zombies.remove(zombie)
+                        self.game_state.zombies.remove(zombie)
                         
                         # Add score for kill
                         if add_score_callback:
@@ -431,7 +449,7 @@ class EnemySystem:
     
     def clear_all(self):
         """Clear all zombies and projectiles"""
-        self.zombies.clear()
+        self.game_state.zombies.clear()
         spit_projectiles.clear()
         zombie_deaths.clear()
     
@@ -443,7 +461,7 @@ class EnemySystem:
     def serialize(self):
         """Convert enemy system state to a serializable dictionary"""
         return {
-            "zombies": self.zombies,
+            "zombies": self.game_state.zombies,
             "spit_projectiles": spit_projectiles.copy(),
             "spawn_rate_multiplier": self.spawn_rate_multiplier
         }
@@ -451,7 +469,7 @@ class EnemySystem:
     def deserialize(self, data):
         """Restore enemy system state from a serialized dictionary"""
         if "zombies" in data:
-            self.zombies = data["zombies"]
+            self.game_state.zombies = data["zombies"]
             
         if "spit_projectiles" in data:
             spit_projectiles.clear()

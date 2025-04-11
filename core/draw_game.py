@@ -8,20 +8,17 @@ from config import *
 from core.player import Player
 
 
+
 class GameRenderer:
-    def __init__(self, screen, WIDTH, HEIGHT, player_width, player_height, 
-                 player_image=None, player_walking_frames=None, 
-                 player_falling_frame=None, player_rising_frame=None, floor_height=30):
+    def __init__(self, screen, WIDTH, HEIGHT, player, player_walking_frames=None, 
+                 player_falling_frame=None, player_rising_frame=None):
         self.screen = screen
         self.WIDTH = WIDTH
         self.HEIGHT = HEIGHT
-        self.player_width = player_width
-        self.player_height = player_height
-        self.player_image = player_image
+        self.player = player
         self.player_walking_frames = player_walking_frames
         self.player_falling_frame = player_falling_frame
         self.player_rising_frame = player_rising_frame
-        self.floor_height = floor_height
         
         # Try to load the grenade projectile image, or create a fallback
         try:
@@ -135,17 +132,17 @@ class GameRenderer:
                 current_frame = pygame.transform.flip(current_frame, True, False)
                 
             self.screen.blit(current_frame, (player_x, player_y))
-        elif self.player_image:
+        elif self.player.sprite:
             # Use static player image if animations not available
             # Flip image if player is facing left
             if player_facing_left:
-                flipped_image = pygame.transform.flip(self.player_image, True, False)
+                flipped_image = pygame.transform.flip(self.player.sprite, True, False)
                 self.screen.blit(flipped_image, (player_x, player_y))
             else:
-                self.screen.blit(self.player_image, (player_x, player_y))
+                self.screen.blit(self.player.sprite, (player_x, player_y))
         else:
             # Fallback to rectangle if no images provided
-            pygame.draw.rect(self.screen, (0, 255, 0), (player_x, player_y, self.player_width, self.player_height))
+            pygame.draw.rect(self.screen, (0, 255, 0), (player_x, player_y, self.player.width, self.player.height))
 
     def draw_zombie(self, zombie_x, zombie_y, zombie_type_key, zombie_health, max_health, zombie=None):
         zombie_type = ZOMBIE_TYPES[zombie_type_key]
@@ -172,7 +169,7 @@ class GameRenderer:
                 pygame.draw.rect(self.screen, zombie_type.color, jump_rect)
             
             # Draw a small "shadow" below the jumping zombie
-            shadow_y = self.HEIGHT - self.floor_height - 5  # Just above the floor
+            shadow_y = self.HEIGHT - FLOOR_HEIGHT - 5  # Just above the floor
             shadow_width = scaled_width * 0.7
             shadow_rect = pygame.Rect(zombie_x + (scaled_width - shadow_width)/2, 
                                    shadow_y, shadow_width, 5)
@@ -408,7 +405,7 @@ class GameRenderer:
                 puddle_height = int(zombie_height * 0.4 * puddle_scale)
                 
                 # As animation progresses, move puddle down to the ground
-                floor_y = self.HEIGHT - self.floor_height + 5  # A bit into the floor
+                floor_y = self.HEIGHT - FLOOR_HEIGHT + 5  # A bit into the floor
                 current_y = y + (floor_y - y) * progress
                 
                 # Create scaled version of the puddle

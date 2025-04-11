@@ -6,21 +6,15 @@ import random
 
 
 class GameMechanics:
-    def __init__(self, game_state, screen_width, screen_height, player_width, player_height, channels=None, gravity=0.5, player_speed=4, floor_height=30):
+    def __init__(self, game_state, screen_width, screen_height, player, channels=None, gravity=0.5, player_speed=4, floor_height=30):
         self.game_state = game_state
         self.WIDTH = screen_width
         self.HEIGHT = screen_height
-        self.player_width = player_width
-        self.player_height = player_height
         self.gravity = gravity
         self.player_speed = player_speed
         self.floor_height = floor_height
         self.channels = channels  # Sound channels
-        
-        # Sound cooldowns to prevent overlapping
-        self.last_hit_sound = 0
-        self.hit_sound_cooldown = 70  # ms
-        
+        self.player = player
         # Mouse shooting
         self.mouse_down = False
         self.mouse_clicked = False  # Track if mouse is currently in clicked state (for auto weapons)
@@ -53,26 +47,26 @@ class GameMechanics:
         player_rect = pygame.Rect(
             self.game_state.player_x,
             self.game_state.player_y,
-            self.player_width,
-            self.player_height
+            self.player.width,
+            self.player.height
         )
 
         for platform in platforms:
             if player_rect.colliderect(platform) and self.game_state.player_vel_y >= 0:
-                self.game_state.player_y = platform.top - self.player_height
+                self.game_state.player_y = platform.top - self.player.height
                 self.game_state.player_vel_y = 0
                 self.game_state.is_jumping = False
                 self.game_state.on_ground = True
                 break
 
-        ground_y = self.HEIGHT - self.player_height
+        ground_y = self.HEIGHT - self.player.height
         if self.game_state.player_y >= ground_y:
             self.game_state.player_y = ground_y
             self.game_state.player_vel_y = 0
             self.game_state.is_jumping = False
             self.game_state.on_ground = True
 
-        self.game_state.player_x = max(0, min(self.WIDTH - self.player_width, self.game_state.player_x))
+        self.game_state.player_x = max(0, min(self.WIDTH - self.player.width, self.game_state.player_x))
 
     def move_bullets(self):
         current_time = pygame.time.get_ticks()
@@ -118,290 +112,35 @@ class GameMechanics:
             if not is_explosive and (bullet[0] > self.WIDTH or bullet[0] < 0 or bullet[1] > self.HEIGHT or bullet[1] < 0):
                 self.game_state.bullets.remove(bullet)
 
-    def move_zombies(self):
-        """Move all zombies in the scene"""
-        current_time = pygame.time.get_ticks()
-        player_x, player_y = self.game_state.player_x, self.game_state.player_y
-        
-        for zombie in self.game_state.zombies[:]:  # Use a copy of the list to allow modification
-            # Unpack zombie data
-            zombie_x, zombie_y, zombie_type_key, health, last_action_time, state = zombie[0], zombie[1], zombie[2], zombie[3], zombie[4] if len(zombie) > 4 else 0, zombie[5] if len(zombie) > 5 else "normal"
-            
-            # Get zombie type properties
-            zombie_type = ZOMBIE_TYPES[zombie_type_key]
-            
-            # Calculate distance to player
-            dx = player_x - zombie_x
-            dy = player_y - zombie_y
-            distance = ((dx ** 2) + (dy ** 2)) ** 0.5
-            
-            # Ensure zombie list has the required attributes
-            if len(zombie) <= 4:
-                zombie.append(0)  # Add last_action_time
-            if len(zombie) <= 5:
-                zombie.append("normal")  # Add state
-            if len(zombie) <= 7 and (zombie_type.can_jump or not zombie_type.is_crawler):
-                zombie.append(0)  # Add vertical velocity
-                zombie.append(0)  # Add horizontal velocity
-            
-            # For spitter zombies, check if they should spit
-            if zombie_type.can_spit and distance < zombie_type.spit_range and distance > 100:
-                # Check cooldown
-                if current_time - last_action_time > zombie_type.spit_cooldown:
-                    # Calculate direction
-                    if distance > 0:
-                        angle = math.atan2(dy, dx)
-                        spit_x = zombie_x + 20 * math.cos(angle)  # Start a bit in front of zombie
-                        spit_y = zombie_y + 20 * math.sin(angle)
-                        
-                        # Add spit projectile: [x, y, vx, vy, damage, creation_time]
-                        from zombie_types import spit_projectiles
-                        spit_projectiles.append([
-                            spit_x, spit_y, 
-                            zombie_type.spit_speed * math.cos(angle),
-                            zombie_type.spit_speed * math.sin(angle),
-                            zombie_type.spit_damage,
-                            current_time
-                        ])
-                        
-                        # Update last action time
-                        zombie[4] = current_time
-                    continue  # Skip movement during spitting
-            
-            # For leaper zombies, check if they should jump
-            if zombie_type.can_jump:
-                # Check jump cooldown
-                if current_time - last_action_time > zombie_type.jump_cooldown and state != "jumping" and abs(dx) > 100:
-                    # Start jump
-                    zombie[5] = "jumping"  # Set state to jumping
-                    zombie[6] = zombie_type.jump_height * -1  # Set vertical velocity (negative is up)
-                    zombie[7] = (dx / abs(dx)) * zombie_type.speed * 1.5  # Set horizontal velocity based on player direction
-                    zombie[4] = current_time  # Update last action time
-            
-            # Handle jumping state for leapers
-            if state == "jumping":
-                # Apply gravity
-                zombie[6] += 0.5  # Gravity
-                
-                # Update position based on velocity
-                zombie[0] += zombie[7]  # Horizontal movement
-                zombie[1] += zombie[6]  # Vertical movement
-                
-                # Check if landed
-                if zombie[6] > 0 and zombie[1] >= self.HEIGHT - self.player_height:
-                    zombie[1] = self.HEIGHT - self.player_height  # Snap to floor
-                    zombie[5] = "normal"  # Reset state
-                    zombie[4] = current_time  # Update last action time for cooldown
-                
-                continue  # Skip normal movement calculations for jumping zombies
-            
-            # Normal movement based on crawler flag
-            if distance > 0:
-                if zombie_type.is_crawler:
-                    # Crawler zombies: direct movement toward player (fly/crawl)
-                    # Normalize the vector and multiply by speed
-                    normalized_dx = dx / distance * zombie_type.speed
-                    normalized_dy = dy / distance * zombie_type.speed
-                    
-                    # Apply movement in both directions
-                    zombie[0] += normalized_dx
-                    zombie[1] += normalized_dy
-                else:
-                    # Regular zombies: bound to ground with physics
-                    # Only move horizontally toward player
-                    direction = 1 if dx > 0 else -1
-                    
-                    zombie[0] += direction * zombie_type.speed
-                    
-                    # Apply gravity
-                    if len(zombie) > 6:  # Check if we have velocity components
-                        zombie[6] += 0.5  # Apply gravity to vertical velocity
-                        zombie[1] += zombie[6]  # Apply vertical velocity
-                        
-                        # Check if on ground
-                        if zombie[1] >= self.HEIGHT - self.player_height:
-                            zombie[1] = self.HEIGHT - self.player_height  # Snap to floor
-                            zombie[6] = 0  # Reset vertical velocity on ground
-                    else:
-                        # Ensure zombies stay on the floor
-                        if zombie[1] > self.HEIGHT - self.player_height:
-                            zombie[1] = self.HEIGHT - self.player_height
-        
-        # Move spit projectiles
-        from zombie_types import spit_projectiles
-        for projectile in spit_projectiles[:]:  # Use copy to allow removal
-            # Update position
-            projectile[0] += projectile[2]  # x += vx
-            projectile[1] += projectile[3]  # y += vy
-            
-            # Check if out of bounds
-            if (projectile[0] < 0 or projectile[0] > self.WIDTH or 
-                projectile[1] < 0 or projectile[1] > self.HEIGHT):
-                spit_projectiles.remove(projectile)
-    
-    def play_hit_sound(self):
-        """Play zombie hit sound"""
-        if self.channels and 'damage' in self.channels:
-            if not self.channels['damage'].get_busy():
-                self.channels['damage'].play(ZOMBIE_TYPES['normal'].sound)
-        else:
-            ZOMBIE_TYPES['normal'].sound.play()
-
-    def check_collisions(self):
-        """Check all collisions between game objects"""
-        # Skip collision checks if there are no zombies or bullets
-        if not self.game_state.zombies and not self.game_state.bullets:
-            return
-            
-        current_time = pygame.time.get_ticks()
-        
-        # Player - Zombie collision
-        player_rect = pygame.Rect(
-            self.game_state.player_x, 
-            self.game_state.player_y, 
-            self.player_width, 
-            self.player_height
-        )
-        
-        for zombie in self.game_state.zombies[:]:  # Use copy for safe removal
-            zombie_type = ZOMBIE_TYPES[zombie[2]]
-            
-            # Scale zombie hitbox based on size
-            zombie_width_scaled = self.player_width * zombie_type.size
-            zombie_height_scaled = self.player_height * zombie_type.size
-            
-            zombie_rect = pygame.Rect(
-                zombie[0], 
-                zombie[1], 
-                zombie_width_scaled, 
-                zombie_height_scaled
-            )
-            
-            # Check player collision with zombie
-            if player_rect.colliderect(zombie_rect):
-                # Player is damaged by zombie
-                if current_time - self.game_state.last_damage_time > self.game_state.damage_cooldown:
-                    if self.game_state.take_damage(zombie_type.damage):
-                        self.play_hit_sound()
-            
-            # Bullet - Zombie collision
-            for bullet in self.game_state.bullets[:]:  # Use copy for safe removal
-                bullet_rect = pygame.Rect(
-                    bullet[0], 
-                    bullet[1], 
-                    bullet[6][0], 
-                    bullet[6][1]
-                )
-                
-                if zombie_rect.colliderect(bullet_rect):
-                    # Apply damage based on bullet's damage value
-                    damage = bullet[4]  # Use the damage value directly from the bullet
-                    
-                    # Apply damage to zombie
-                    zombie[3] -= damage
-                    
-                    # Apply knockback to zombie based on bullet momentum
-                    knockback_x = bullet[7] * 0.2  # Use bullet directionX for knockback
-                    knockback_y = bullet[8] * 0.2  # Use bullet directionY for knockback
-                    
-                    # Apply knockback, but don't knock zombies through walls
-                    zombie[0] += knockback_x
-                    zombie[1] += knockback_y
-                    
-                    # Ensure zombie stays within screen bounds
-                    zombie[0] = max(0, min(zombie[0], self.WIDTH - zombie_width_scaled))
-                    zombie[1] = max(0, min(zombie[1], self.HEIGHT - zombie_height_scaled))
-                    
-                    # Handle explosive bullets
-                    if len(bullet) > 9 and bullet[9]:
-                        self.create_bullet_explosion(bullet)
-                        # Remove bullet
-                        if bullet in self.game_state.bullets:
-                            self.game_state.bullets.remove(bullet)
-                    else:
-                        # Regular bullet is removed on hit
-                        if bullet in self.game_state.bullets:
-                            self.game_state.bullets.remove(bullet)
-                    
-                    # Check if zombie died
-                    if zombie[3] <= 0:
-                        # Generate death animation
-                        from zombie_types import zombie_deaths
-                        zombie_deaths.append([
-                            zombie[0], zombie[1], current_time, 2000, zombie[2]  # 2 second death animation
-                        ])
-                        
-                        # Remove zombie and add score
-                        if zombie in self.game_state.zombies:
-                            self.game_state.zombies.remove(zombie)
-                            self.game_state.add_score(zombie_type.health)
-                            
-                    # Only process one bullet hit per frame per zombie
-                    break
-        
-        # Spit projectile - Player collision
-        from zombie_types import spit_projectiles
-        for projectile in spit_projectiles[:]:
-            projectile_rect = pygame.Rect(
-                projectile[0] - 8, projectile[1] - 8, 16, 16
-            )
-            
-            if player_rect.colliderect(projectile_rect):
-                # Apply damage to player
-                if current_time - self.game_state.last_damage_time > self.game_state.damage_cooldown:
-                    if self.game_state.take_damage(projectile[4]):
-                        self.play_hit_sound()
-                        
-                # Remove projectile
-                spit_projectiles.remove(projectile)
-
-    def spawn_zombies(self, spawn_rate_multiplier=1.0):
-        for zombie_type in ZOMBIE_TYPES.values():
-            # Adjust spawn rate based on wave progress
-            adjusted_spawn_rate = max(1, int(zombie_type.spawn_rate / spawn_rate_multiplier))
-            
-            if random.randint(1, adjusted_spawn_rate) == 1:
-                scaled_height = zombie_height * zombie_type.size
-                # Calculate y position so that the bottom of the zombie aligns with the ground
-                zombie_y = self.HEIGHT - scaled_height - self.floor_height
-                
-                # Get current environment name from game_state
-                # The current_environment is now stored as a string directly
-                env_name = self.game_state.current_environment
-                
-                # Set spawn position based on environment
-                if env_name == 'streets' or env_name == 'forest':
-                    # In streets or forest areas, spawn from the right edge
-                    spawn_x = self.WIDTH
-                else:
-                    # In building area, also spawn from the right edge
-                    spawn_x = self.WIDTH
-                
-                zombie_type_key = next(key for key, value in ZOMBIE_TYPES.items() if value == zombie_type)
-                
-                # Initialize new zombie with appropriate attributes
-                new_zombie = [spawn_x, zombie_y, zombie_type_key, zombie_type.health, 0, "normal"]
-                
-                # Add velocity components for non-crawler zombies or jumpers
-                if not zombie_type.is_crawler or zombie_type.can_jump:
-                    new_zombie.append(0)  # Add vertical velocity
-                    new_zombie.append(0)  # Add horizontal velocity
-                
-                self.game_state.zombies.append(new_zombie)
-
-
     def try_shoot(self):
         """Attempt to shoot the current weapon, respecting fire rate limits"""
-        current_time = pygame.time.get_ticks()
-        weapon = WEAPON_TYPES[self.game_state.current_weapon]
         
-        # Apply fire rate modifier from player stats
-        effective_fire_rate = weapon.fire_rate / self.game_state.stats["fire_rate"]
-        
-        # Check if enough time has passed since last shot
-        if current_time - self.game_state.last_fire_time >= effective_fire_rate:
-            self.shoot_weapon()
-            self.game_state.last_fire_time = current_time
+        # Check if we have ammo in the current weapon
+        if self.game_state.weapon_ammo[self.game_state.current_weapon] > 0:
+            weapon = WEAPON_TYPES[self.game_state.current_weapon]
+            
+            # Play weapon sound on dedicated channel to avoid cutoffs
+            if self.channels:
+                self.channels['weapon'].play(weapon.sound)
+            else:
+                weapon.sound.play()
+                
+            # Decrement ammo
+            self.game_state.weapon_ammo[self.game_state.current_weapon] -= 1
+            self.game_state.last_shot_time = pygame.time.get_ticks()
+            self.game_state.last_fire_time = pygame.time.get_ticks()  # Update both timers to fix shooting delay
+            
+            # Get player center position (where bullets originate)
+            player_center_x = self.game_state.player_x + self.player.width // 2
+            player_center_y = self.game_state.player_y + self.player.height // 2
+            
+            # Apply damage modifier from player stats
+            modified_damage = self.game_state.get_effective_damage(weapon.damage)
+            
+            # Special handling for grenade launcher
+            is_explosive = weapon.is_explosive if hasattr(weapon, 'is_explosive') else False
+            explosion_radius = weapon.explosion_radius if hasattr(weapon, 'explosion_radius') else 0
+            explosion_damage = weapon.explosion_damage if hasattr(weapon, 'explosion_damage') else 0
 
     def shoot_weapon(self, mouse_pos=None):
         """
@@ -424,8 +163,8 @@ class GameMechanics:
             self.game_state.last_fire_time = pygame.time.get_ticks()  # Update both timers to fix shooting delay
             
             # Get player center position (where bullets originate)
-            player_center_x = self.game_state.player_x + self.player_width // 2
-            player_center_y = self.game_state.player_y + self.player_height // 2
+            player_center_x = self.game_state.player_x + self.player.width // 2
+            player_center_y = self.game_state.player_y + self.player.height // 2
             
             # Apply damage modifier from player stats
             modified_damage = self.game_state.get_effective_damage(weapon.damage)
@@ -560,41 +299,18 @@ class GameMechanics:
                 self.mouse_clicked = False
 
     def throw_lethal(self, mouse_pos=None):
-        if self.game_state.lethal_ammo[self.game_state.current_lethal] > 0:
-            lethal_type = LETHAL_TYPES[self.game_state.current_lethal]
-            self.game_state.lethal_ammo[self.game_state.current_lethal] -= 1
+        # Safety check - ensure we have a valid lethal type selected
+        if not self.game_state.current_lethal or self.game_state.current_lethal not in LETHAL_TYPES:
+            return
             
-            # Player center point
-            start_x = self.game_state.player_x + self.player_width // 2
-            start_y = self.game_state.player_y + self.player_height // 2
-            
-            if mouse_pos:
-                # Throw toward mouse cursor
-                angle = math.atan2(mouse_pos[1] - start_y, mouse_pos[0] - start_x)
-                # Reduce throw speed to 60% of original
-                reduced_throw_speed = lethal_type.throw_speed * 0.6
-                dx = math.cos(angle) * reduced_throw_speed
-                dy = math.sin(angle) * reduced_throw_speed
-            else:
-                # Use old method (use current mouse position)
-                mouse_x, mouse_y = pygame.mouse.get_pos()
-                angle = math.atan2(mouse_y - start_y, mouse_x - start_x)
-                # Reduce throw speed to 60% of original
-                reduced_throw_speed = lethal_type.throw_speed * 0.6
-                dx = math.cos(angle) * reduced_throw_speed
-                dy = math.sin(angle) * reduced_throw_speed
-            
-            self.game_state.thrown_lethals.append([
-                start_x, start_y, dx, dy,
-                self.game_state.current_lethal,
-                pygame.time.get_ticks()
-            ])
-            
-            # Play lethal sound on dedicated channel
-            if self.channels:
-                self.channels['lethal'].play(lethal_type.sound)
-            else:
-                lethal_type.sound.play()
+        # Get lethal type info
+        lethal_type = LETHAL_TYPES[self.game_state.current_lethal]
+        
+        # Play lethal sound on dedicated channel
+        if self.channels:
+            self.channels['lethal'].play(lethal_type.sound)
+        else:
+            lethal_type.sound.play()
 
     def create_bullet_explosion(self, bullet):
         """Create an explosion from a grenade launcher bullet"""
@@ -770,3 +486,24 @@ class GameMechanics:
                         # Fallback to generic reload sound
                         reload_sound = pygame.mixer.Sound("assets/weapons/sounds/reload.mp3")
                         self.channels['reload'].play(reload_sound)
+
+    def get_explosion_damage(self, explosion_index, distance):
+        """Calculate explosion damage based on distance from center"""
+        if explosion_index >= len(self.game_state.explosions):
+            return 0
+            
+        explosion = self.game_state.explosions[explosion_index]
+        explosion_type = explosion[2]
+        
+        # Get explosion properties based on type
+        if explosion_type == 'bullet_explosion':
+            damage = explosion[4]  # Custom damage field for bullet explosions
+            radius = explosion[5]  # Custom radius field for bullet explosions
+        else:
+            damage = LETHAL_TYPES[explosion_type].damage
+            radius = LETHAL_TYPES[explosion_type].radius
+            
+        # Calculate damage falloff based on distance
+        if distance <= radius:
+            return damage * (1 - distance / radius)
+        return 0

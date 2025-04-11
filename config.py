@@ -9,7 +9,7 @@ SHOW_FPS = False
 GOD_MODE = False
 
 # UI Configuration flags
-SHOW_UI_MAP = True  # Set to True to enable minimap in the UI
+SHOW_UI_MAP = False  # Set to True to enable minimap in the UI
 
 GRAVITY = 0.5
 JUMP_STRENGTH = -10
@@ -19,3 +19,23 @@ FLOOR_HEIGHT = 30
 
 WAVE_TIME = 30
 INTERMISSION_TIME = 60
+
+
+
+# Audio
+MUTED = False
+
+
+
+BASE_HEALTH = 100
+
+PLAYER_WIDTH = 60
+PLAYER_HEIGHT = 80
+
+
+
+BASE_SPAWN_RATE_MULTIPLIER = 1.0
+
+
+
+

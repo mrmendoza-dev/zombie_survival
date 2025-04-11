@@ -10,23 +10,56 @@ class GameState:
 
     def reset(self):
         # Player state
-        self.player_x = 1
-        self.player_y = self.HEIGHT
-        self.player_health = 100
-        self.player_facing_left = False
+        self.player_x = 100
+        self.player_y = self.HEIGHT - 100
+        self.player_vel_x = 0
         self.player_vel_y = 0
-        self.is_jumping = False
+        self.player_facing_left = False
         self.on_ground = True
+        self.is_jumping = False
         self.pressing_down = False  # Track downward key for double-tap jump down
-
+        self.player_health = 10
+        
+        # Combat state
+        self.bullets = []
+        self.zombies = []
+        self.thrown_lethals = []
+        self.explosions = []
+        self.persistent_effects = []
+        self.spit_projectiles = []
+        self.zombie_deaths = []
+        
+        # Weapon state
+        self.current_weapon = 'pistol'
+        self.weapon_ammo = {
+            'pistol': WEAPON_TYPES['pistol'].max_ammo,
+            'shotgun': WEAPON_TYPES['shotgun'].max_ammo,
+            'smg': WEAPON_TYPES['smg'].max_ammo,
+            'ar': WEAPON_TYPES['ar'].max_ammo,
+            'sniper': WEAPON_TYPES['sniper'].max_ammo,
+            'grenade_launcher': WEAPON_TYPES['grenade_launcher'].max_ammo
+        }
+        self.last_shot_time = 0
+        self.last_fire_time = 0
+        self.is_manually_reloading = False
+        
+        # Lethal equipment state
+        self.current_lethal = None
+        self.lethal_ammo = {
+            'grenade': 3,  # Start with 3 grenades
+            'molotov': 2   # Start with 2 molotovs
+        }
+        
         # Game state
         self.score = 0
         self.high_score = 0
         self.paused = False  # Add paused flag
         self.current_wave = 1
-        self.wave_time = 30  # seconds per wave (set back to 60 for normal gameplay)
+        self.wave_time = 60  # seconds per wave
         self.wave_timer = self.wave_time * 1000  # convert to milliseconds
         self.wave_start_time = pygame.time.get_ticks()
+        self.wave_active = True
+        self.wave_completion = 0
         self.zombies_per_wave = 10
         self.game_over = False
         self.show_game_over = False  # New flag to control game over screen
@@ -42,7 +75,7 @@ class GameState:
             "fire_rate": 1.0,   # Base fire rate multiplier (higher = faster)
             "reload_speed": 1.0, # Base reload speed multiplier (higher = faster)
             "move_speed": 1.0,   # Base movement speed multiplier
-            "max_health": 100     # Maximum health
+            "max_health": 10     # Maximum health
         }
         
         # Stat upgrade costs - increases with each purchase
@@ -64,96 +97,21 @@ class GameState:
         }
         
         # Advanced wave system
-        self.wave_active = True  # Whether zombies should spawn (active wave vs intermission)
         self.intermission_time = 60  # seconds for intermission between waves
         self.intermission_timer = self.intermission_time * 1000  # convert to milliseconds
         self.intermission_start_time = 0  # When intermission started
         self.intermission_end = 0  # When current intermission will end
         self.WAVE_INTERMISSION_MS = 60000  # 60 seconds in milliseconds
-        self.wave_completion = 0  # Percentage of wave completed (0-100)
-        self.base_spawn_rate = 1.0  # Base multiplier for spawn rate
         
         # Upgrade system
         self.show_upgrades = False  # Whether to show the upgrades menu
         self.upgrade_points = 0  # Points available for upgrades (equal to score)
-        self.available_upgrades = [
-            {
-                "name": "Damage",
-                "description": "Increase weapon damage by 10%",
-                "cost": self.stat_upgrade_costs["damage"],
-                "icon": "💥",
-                "stat": "damage",
-                "effect": lambda: self.upgrade_stat("damage", 0.1)
-            },
-            {
-                "name": "Fire Rate",
-                "description": "Increase firing speed by 10%",
-                "cost": self.stat_upgrade_costs["fire_rate"],
-                "icon": "⚡",
-                "stat": "fire_rate",
-                "effect": lambda: self.upgrade_stat("fire_rate", 0.1)
-            },
-            {
-                "name": "Reload Speed",
-                "description": "Increase reload speed by 15%",
-                "cost": self.stat_upgrade_costs["reload_speed"],
-                "icon": "🔄",
-                "stat": "reload_speed",
-                "effect": lambda: self.upgrade_stat("reload_speed", 0.15)
-            },
-            {
-                "name": "Movement Speed",
-                "description": "Increase movement speed by 10%",
-                "cost": self.stat_upgrade_costs["move_speed"],
-                "icon": "👟",
-                "stat": "move_speed",
-                "effect": lambda: self.upgrade_stat("move_speed", 0.1)
-            },
-            {
-                "name": "Max Health",
-                "description": "Increase maximum health by 1 (Current: 10)",
-                "cost": self.stat_upgrade_costs["max_health"],
-                "icon": "❤️",
-                "stat": "max_health",
-                "effect": lambda: self.upgrade_stat("max_health", 1)
-            },
-            {
-                "name": "Health Pack",
-                "description": "Restore 1 heart of health",
-                "cost": 50,
-                "icon": "🩹",
-                "stat": None,
-                "effect": self.upgrade_health
-            },
-            {
-                "name": "Ammo Pack",
-                "description": "Refill current weapon ammo",
-                "cost": 40,
-                "icon": "🔫",
-                "stat": None,
-                "effect": self.upgrade_ammo
-            }
-        ]
         self.selected_upgrade = 0
         
         # Environment tracking
         self.in_safe_room = False  # Whether player is in the room or main area
-        self.current_environment = 'building'  # Default environment
+        self.current_environment = 'starting'  # Default environment
 
-        # Weapons and equipment
-        self.current_weapon = 'pistol'
-        self.current_lethal = 'grenade'
-        self.weapon_ammo = {weapon_type: WEAPON_TYPES[weapon_type].max_ammo for weapon_type in WEAPON_TYPES}
-        self.lethal_ammo = {'grenade': 5}
-        self.last_shot_time = 0  # For reload timing
-        self.last_fire_time = 0  # For automatic weapon fire rate
-
-        # Game objects
-        self.bullets = []
-        self.zombies = []
-        self.thrown_lethals = []
-        self.explosions = []
-    
     def upgrade_stat(self, stat_name, amount):
         """Upgrade a player stat by the specified amount"""
         if stat_name == "max_health":
@@ -302,7 +260,11 @@ class GameState:
             )
         
         # Replenish lethals
-        self.lethal_ammo['grenade'] = min(5, self.lethal_ammo['grenade'] + 2)
+        for lethal_type in ['grenade', 'molotov']:
+            if lethal_type in self.lethal_ammo:
+                max_amount = 5 if lethal_type == 'grenade' else 3  # Different max for each type
+                replenish_amount = 2 if lethal_type == 'grenade' else 1  # Different replenish rate
+                self.lethal_ammo[lethal_type] = min(max_amount, self.lethal_ammo[lethal_type] + replenish_amount)
 
     def get_time_remaining(self):
         """Get time remaining in current phase (wave or intermission)"""

@@ -26,6 +26,7 @@ class LethalType:
     name: str
     sprite: pygame.Surface
     sound: pygame.mixer.Sound
+    max_ammo: int
     damage: float
     radius: int  # Explosion radius
     throw_speed: float
@@ -48,13 +49,14 @@ molotov_sound = None
 
 # Load weapon images
 pistol_image = pygame.image.load('assets/weapons/images/revolver.png')
-shotgun_image = pygame.image.load('assets/weapons/images/shotgun.webp')
+shotgun_image = pygame.image.load('assets/weapons/images/shotgun.png')
 smg_image = pygame.image.load('assets/weapons/images/uzi.png')
 assault_image = pygame.image.load('assets/weapons/images/assault.png')
 sniper_image = pygame.image.load('assets/weapons/images/sniper.png')
+grenade_launcher_image = pygame.image.load('assets/weapons/images/grenade-launcher.png')
+
 grenade_image = pygame.image.load('assets/weapons/images/grenade.png')
-grenade_launcher_image = pygame.image.load('assets/weapons/images/grenade-launcher.png')  # You'll need this image
-molotov_image = pygame.image.load('assets/weapons/images/molotov.png')  # Add a molotov image
+molotov_image = pygame.image.load('assets/weapons/images/molotov.png')
 
 # Define weapon types with placeholder sounds
 WEAPON_TYPES = {
@@ -63,7 +65,7 @@ WEAPON_TYPES = {
         sprite=pistol_image,
         sound=None,  # Will be set later
         max_ammo=6,
-        damage=1.0,
+        damage=2.0,
         bullet_speed=10.0,
         pellets=1,
         reload_time=1000,
@@ -91,14 +93,14 @@ WEAPON_TYPES = {
         sprite=smg_image,
         sound=None,  # Will be set later
         max_ammo=20,
-        damage=0.5,  # Light damage
+        damage=1,  # Light damage
         bullet_speed=15.0,  # Fast bullets
         pellets=1,
         reload_time=2000,  # Medium reload
         bullet_color=(0, 255, 255),  # Cyan
         bullet_size=(6, 2),  # Smaller bullets
         is_auto=True,
-        fire_rate=100  # Fast firing rate - 100ms be        tween shots
+        fire_rate=100  # Fast firing rate - 100ms between shots
     ),
     'ar': WeaponType(
         name='Assault Rifle',
@@ -153,6 +155,7 @@ LETHAL_TYPES = {
         name='Grenade',
         sprite=grenade_image,  # Add grenade sprite
         sound=None,  # Will be set later
+        max_ammo=5,
         damage=3.0,
         radius=100,
         throw_speed=15.0,
@@ -164,6 +167,7 @@ LETHAL_TYPES = {
         name='Molotov',
         sprite=molotov_image,  # Add molotov sprite
         sound=None,  # Will be set later
+        max_ammo=5,
         damage=1.0,  # Lower damage but persistent
         radius=80,  # Slightly smaller radius than grenade
         throw_speed=12.0,  # Slightly slower throw

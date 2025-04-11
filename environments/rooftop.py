@@ -1,4 +1,5 @@
 import pygame
+from config import FLOOR_HEIGHT
 from environments.base import Environment, MapObject, GameObject
 import random
 
@@ -33,11 +34,10 @@ class RooftopEnvironment(Environment):
             self.music = asset_manager.get('room_music', None)
         
         # Calculate floor height and dimensions
-        floor_height = 30
-        floor_y = height - floor_height
+        floor_y = height - FLOOR_HEIGHT
 
         # Create floor platform for rooftop - make it wider than the building
-        floor = pygame.Rect(0, floor_y, width, floor_height)
+        floor = pygame.Rect(0, floor_y, width, FLOOR_HEIGHT)
         
         # Create various platforms/obstacles for the rooftop
         platforms = [
@@ -116,7 +116,6 @@ class RooftopEnvironment(Environment):
         self.width = width
         self.height = height
         self.floor_y = floor_y
-        self.floor_height = floor_height
         
         # Pre-generate cityscape silhouette data
         self.cityscape = []
@@ -127,7 +126,7 @@ class RooftopEnvironment(Environment):
             
             # Store building data
             building = {
-                'rect': (x, self.height - self.floor_height - height, building_width, height),
+                'rect': (x, self.height - FLOOR_HEIGHT - height, building_width, height),
                 'windows': []
             }
             
