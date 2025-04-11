@@ -97,7 +97,7 @@ class GameSystem:
         self.selected_upgrade = 0
         
         # Environment tracking
-        self.in_room = False
+        self.in_safe_room = False
         self.current_environment = 'building'
     
     def reset(self):
@@ -151,14 +151,14 @@ class GameSystem:
         self.weapon_system.update_weapon_state(self.player)
         
         # Handle shooting if not in a safe area
-        if not self.in_room:
+        if not self.in_safe_room:
             self.weapon_system.handle_shooting(keys, self.player, mouse_buttons, mouse_pos)
             
         # Update bullets
         self.weapon_system.move_bullets()
         
         # Update zombies if not in a safe area
-        if not self.in_room:
+        if not self.in_safe_room:
             # Move zombies toward player
             self.enemy_system.move_zombies(self.player.x, self.player.y)
             
@@ -184,7 +184,7 @@ class GameSystem:
             # Cycle lethal
             self.weapon_system.cycle_lethal(self.inventory)
             
-        if keys[pygame.K_g] and not self.in_room:
+        if keys[pygame.K_g] and not self.in_safe_room:
             # Throw lethal equipment
             self.weapon_system.throw_lethal(self.player, mouse_pos)
         
@@ -199,7 +199,7 @@ class GameSystem:
     
     def check_collisions(self):
         """Check all collisions between game objects"""
-        if self.in_room:
+        if self.in_safe_room:
             return  # No combat in safe areas
             
         # Check player damage from zombies

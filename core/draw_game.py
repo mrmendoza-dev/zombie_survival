@@ -333,64 +333,7 @@ class GameRenderer:
             # Fallback background
             self.screen.fill((0, 0, 0))
 
-    def draw_score(self, score, font, color=(255, 255, 255)):
-        """Draw the player's score"""
-        score_text = font.render(f"Score: {score}", True, color)
-        self.screen.blit(score_text, (10, 10))
-        
-    def draw_health(self, health, max_health, font, color=(255, 255, 255)):
-        """Draw the player's health"""
-        health_text = font.render(f"Health: {int(health)}/{max_health}", True, color)
-        self.screen.blit(health_text, (10, 40))
-        
-        # Health bar
-        bar_width = 200
-        bar_height = 20
-        outline_rect = pygame.Rect(10, 70, bar_width, bar_height)
-        fill_rect = pygame.Rect(10, 70, int(bar_width * (health / max_health)), bar_height)
-        
-        pygame.draw.rect(self.screen, (255, 0, 0), outline_rect)
-        pygame.draw.rect(self.screen, (0, 255, 0), fill_rect)
 
-    def draw_wave_info(self, wave, font, color=(255, 255, 255)):
-        """Draw the current wave information"""
-        wave_text = font.render(f"Wave: {wave}", True, color)
-        self.screen.blit(wave_text, (self.WIDTH - wave_text.get_width() - 10, 10))
-
-    def draw_fps(self, fps, font, color=(255, 255, 255)):
-        """Draw the current FPS"""
-        fps_text = font.render(f"FPS: {int(fps)}", True, color)
-        self.screen.blit(fps_text, (self.WIDTH - fps_text.get_width() - 10, 40))
-
-    def draw_weapon_info(self, weapon_name, ammo, font, color=(255, 255, 255)):
-        """Draw the current weapon and ammo"""
-        weapon_text = font.render(f"{weapon_name}: {ammo}", True, color)
-        self.screen.blit(weapon_text, (10, self.HEIGHT - 40))
-
-    def draw_lethal_info(self, lethal_name, count, font, color=(255, 255, 255)):
-        """Draw the current lethal equipment and count"""
-        if lethal_name:
-            lethal_text = font.render(f"{lethal_name}: {count}", True, color)
-            self.screen.blit(lethal_text, (10, self.HEIGHT - 70))
-            
-    def draw_reload_indicator(self, is_reloading, reload_progress, font, color=(255, 255, 0)):
-        """Draw a reload indicator when weapon is reloading"""
-        if is_reloading:
-            reload_text = font.render("RELOADING", True, color)
-            x = (self.WIDTH - reload_text.get_width()) // 2
-            y = self.HEIGHT - 100
-            self.screen.blit(reload_text, (x, y))
-            
-            # Progress bar
-            bar_width = 200
-            bar_height = 10
-            outline_rect = pygame.Rect((self.WIDTH - bar_width) // 2, y + 30, bar_width, bar_height)
-            fill_rect = pygame.Rect((self.WIDTH - bar_width) // 2, y + 30, 
-                                  int(bar_width * reload_progress), bar_height)
-            
-            pygame.draw.rect(self.screen, (100, 100, 100), outline_rect)
-            pygame.draw.rect(self.screen, color, fill_rect)
-            
     def draw_game_over(self, score, high_score, font_large, font_small):
         """Draw the game over screen"""
         # Semi-transparent overlay
@@ -431,6 +374,8 @@ class GameRenderer:
         # Resume instruction
         resume_text = font_small.render("Press ESC to resume", True, (255, 255, 255))
         self.screen.blit(resume_text, ((self.WIDTH - resume_text.get_width()) // 2, self.HEIGHT // 2))
+        
+        
         
     def draw_platforms(self, platforms, color=(100, 50, 0)):
         """Draw platforms for the player to stand on"""
@@ -561,21 +506,6 @@ class GameRenderer:
             text = font.render("E", True, (255, 255, 255))
             self.screen.blit(text, (rect.centerx - text.get_width() // 2, rect.top - 20))
             
-    def draw_crosshair(self, mouse_pos):
-        """Draw a crosshair at the mouse position for aiming"""
-        x, y = mouse_pos
-        size = 10  # Size of the crosshair
-        thickness = 2  # Thickness of the lines
-        
-        # Draw the crosshair in red
-        color = (255, 0, 0)
-        
-        # Draw horizontal and vertical lines
-        pygame.draw.line(self.screen, color, (x - size, y), (x + size, y), thickness)
-        pygame.draw.line(self.screen, color, (x, y - size), (x, y + size), thickness)
-        
-        # Optional: add a small circle in the center for better precision
-        pygame.draw.circle(self.screen, color, (x, y), 2) 
 
     def draw_hazards(self, hazards):
         """Draw environmental hazards"""
@@ -588,107 +518,3 @@ class GameRenderer:
             pygame.draw.rect(s, color, (0, 0, hazard[2], hazard[3]))
             self.screen.blit(s, (hazard[0], hazard[1]))
             
-    def draw_environment_transition_text(self, text, font, progress):
-        """Draw text for environment transitions with a fade effect"""
-        alpha = 255
-        if progress < 0.3:  # Fade in
-            alpha = int(255 * (progress / 0.3))
-        elif progress > 0.7:  # Fade out
-            alpha = int(255 * (1 - (progress - 0.7) / 0.3))
-        
-        text_surface = font.render(text, True, (255, 255, 255))
-        text_surface.set_alpha(alpha)
-        x = (self.WIDTH - text_surface.get_width()) // 2
-        y = (self.HEIGHT - text_surface.get_height()) // 3
-        self.screen.blit(text_surface, (x, y))
-        
-    def draw_wave_start_text(self, wave_number, font_large, progress):
-        """Draw wave start announcement with animation"""
-        import math
-        
-        # Calculate alpha (opacity) based on animation progress
-        alpha = 255
-        if progress < 0.2:  # Fade in
-            alpha = int(255 * (progress / 0.2))
-        elif progress > 0.8:  # Fade out
-            alpha = int(255 * (1 - (progress - 0.8) / 0.2))
-            
-        # Calculate y position with a bounce effect
-        base_y = self.HEIGHT // 3
-        bounce = math.sin(progress * math.pi * 2) * 20  # Bounce amplitude
-        y = base_y + bounce
-        
-        # Calculate scale based on progress (grow then shrink)
-        scale = 1.0
-        if progress < 0.5:
-            scale = 0.8 + 0.4 * (progress / 0.5)
-        else:
-            scale = 1.2 - 0.2 * ((progress - 0.5) / 0.5)
-            
-        # Render text
-        wave_text = font_large.render(f"WAVE {wave_number}", True, (255, 50, 50))
-        
-        # Apply scale
-        scaled_text = pygame.transform.scale(
-            wave_text, 
-            (int(wave_text.get_width() * scale), int(wave_text.get_height() * scale))
-        )
-        
-        # Apply alpha
-        scaled_text.set_alpha(alpha)
-        
-        # Draw centered text
-        x = (self.WIDTH - scaled_text.get_width()) // 2
-        self.screen.blit(scaled_text, (x, y))
-        
-    def draw_stat_upgrade_menu(self, stats, current_selection, font_medium, font_small, upgrade_points):
-        """Draw the stat upgrade menu"""
-        # Dark semi-transparent background
-        overlay = pygame.Surface((self.WIDTH, self.HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 200))  # RGBA, A=200 means 80% opacity
-        self.screen.blit(overlay, (0, 0))
-        
-        # Title
-        title_text = font_medium.render("UPGRADE STATS", True, (255, 215, 0))
-        self.screen.blit(title_text, ((self.WIDTH - title_text.get_width()) // 2, 50))
-        
-        # Upgrade points available
-        points_text = font_small.render(f"Upgrade Points: {upgrade_points}", True, (255, 255, 255))
-        self.screen.blit(points_text, ((self.WIDTH - points_text.get_width()) // 2, 100))
-        
-        # Stat options
-        y_start = 150
-        y_spacing = 50
-        x_center = self.WIDTH // 2
-        
-        for i, (stat, value) in enumerate(stats.items()):
-            # Format the stat name to be more readable
-            formatted_stat = stat.replace("_", " ").title()
-            
-            # Determine color based on selection
-            if i == current_selection:
-                color = (255, 215, 0)  # Gold for selected
-                # Draw selection indicator (>)
-                indicator = font_medium.render(">", True, color)
-                self.screen.blit(indicator, (x_center - 150, y_start + i * y_spacing))
-            else:
-                color = (200, 200, 200)  # Light gray for unselected
-            
-            # Draw stat name and value
-            stat_text = font_medium.render(formatted_stat, True, color)
-            
-            # Format the value appropriately
-            if stat == "max_health":
-                value_text = font_medium.render(f"{value}", True, color)
-            else:
-                # Format as percentage increase
-                percent = int((value - 1.0) * 100)
-                value_text = font_medium.render(f"+{percent}%", True, color)
-            
-            # Position and draw
-            self.screen.blit(stat_text, (x_center - 120, y_start + i * y_spacing))
-            self.screen.blit(value_text, (x_center + 80, y_start + i * y_spacing))
-        
-        # Instructions
-        instructions_text = font_small.render("UP/DOWN to select, SPACE to purchase", True, (255, 255, 255))
-        self.screen.blit(instructions_text, ((self.WIDTH - instructions_text.get_width()) // 2, self.HEIGHT - 50)) 

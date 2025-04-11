@@ -21,7 +21,7 @@ SELECTED_SLOT = (255, 255, 150, 100)
 
 
 class GameUI:
-    def __init__(self, screen_width, screen_height):
+    def __init__(self, screen_width, screen_height, screen):
         self.WIDTH = screen_width
         self.HEIGHT = screen_height
         self.font = pygame.font.SysFont(None, 36)
@@ -52,6 +52,8 @@ class GameUI:
         # Last used item name and description (for tooltips)
         self.last_item = None
         self.tooltip_timer = 0
+        self.screen = screen
+
 
     def show_message(self, message, duration=2000):
         """
@@ -106,10 +108,11 @@ class GameUI:
             # Increase offset for next message
             y_offset += 40
 
-    def draw_health_bar(self, screen, player_health, max_health=10):
+    def draw_health_bar(self, screen, player_health, max_health)awawawd:
         # Calculate health bar width to be about 1/3 of screen width
+        
         health_bar_width = int(self.WIDTH / 3)
-        health_bar_height = 20
+        health_bar_height = 10
         
         # Position it at top left
         health_bar_x = 10
@@ -128,10 +131,6 @@ class GameUI:
             pygame.draw.rect(screen, (0, 255, 0), (health_bar_x, health_bar_y, health_bar_width * (player_health / max_health), health_bar_height))
         
         # No health counter text or numbers displayed as requested
-
-    def draw_score(self, screen, score):
-        # Remove the score display from the bottom left
-        pass
 
     def draw_wave_info(self, screen, current_wave, time_remaining, is_intermission=False, wave_completion=0):
         minutes = time_remaining // 60
@@ -348,110 +347,131 @@ class GameUI:
     
     def _draw_minimap_fixed(self, screen, minimap_x, minimap_y, minimap_width, minimap_height, current_env):
         """Legacy implementation of the minimap (used as fallback if no world map is provided)"""
+        # Calculate scale factor based on whether this is minimap or fullscreen map
+        is_fullscreen = minimap_width > 200  # Assuming full map is larger than minimap
+        scale_factor = 1.0 if not is_fullscreen else 2.0
+        
         # Calculate node positions based on the map flow
         # City > Apartments > Starting > Streets > Forest > Lake > Swamp
         
         section_width = minimap_width / 7  # Divide available width
         
+        # Node size scales with map size
+        node_size = 15 * scale_factor
+        
         # Main horizontal path nodes
         city_x = minimap_x + section_width * 0.5
         city_y = minimap_y + minimap_height // 2
-        city_size = 15
         
         apartment_x = minimap_x + section_width * 1.5
         apartment_y = minimap_y + minimap_height // 2
-        apartment_size = 15
         
         start_x = minimap_x + section_width * 2.5
         start_y = minimap_y + minimap_height // 2
-        start_size = 15
         
         streets_x = minimap_x + section_width * 3.5
         streets_y = minimap_y + minimap_height // 2
-        streets_size = 15
         
         forest_x = minimap_x + section_width * 4.5
         forest_y = minimap_y + minimap_height // 2
-        forest_size = 15
         
         lake_x = minimap_x + section_width * 5.5
         lake_y = minimap_y + minimap_height // 2
-        lake_size = 15
         
         swamp_x = minimap_x + section_width * 6.5
         swamp_y = minimap_y + minimap_height // 2
-        swamp_size = 15
         
         # Vertical path nodes
         rooftop_x = apartment_x
         rooftop_y = minimap_y + minimap_height // 5
-        rooftop_size = 15
         
         room_x = start_x
         room_y = minimap_y + minimap_height // 5
-        room_size = 15
         
         sewer_x = streets_x
         sewer_y = minimap_y + minimap_height * 4 // 5
-        sewer_size = 15
         
         # Draw horizontal connections (main path)
-        pygame.draw.line(screen, WHITE, (city_x + city_size//2, city_y), (apartment_x - apartment_size//2, apartment_y), 2)
-        pygame.draw.line(screen, WHITE, (apartment_x + apartment_size//2, apartment_y), (start_x - start_size//2, start_y), 2)
-        pygame.draw.line(screen, WHITE, (start_x + start_size//2, start_y), (streets_x - streets_size//2, streets_y), 2)
-        pygame.draw.line(screen, WHITE, (streets_x + streets_size//2, streets_y), (forest_x - forest_size//2, forest_y), 2)
-        pygame.draw.line(screen, WHITE, (forest_x + forest_size//2, forest_y), (lake_x - lake_size//2, lake_y), 2)
-        pygame.draw.line(screen, WHITE, (lake_x + lake_size//2, lake_y), (swamp_x - swamp_size//2, swamp_y), 2)
+        line_width = max(2, int(2 * scale_factor))
+        pygame.draw.line(screen, WHITE, (city_x + node_size//2, city_y), (apartment_x - node_size//2, apartment_y), line_width)
+        pygame.draw.line(screen, WHITE, (apartment_x + node_size//2, apartment_y), (start_x - node_size//2, start_y), line_width)
+        pygame.draw.line(screen, WHITE, (start_x + node_size//2, start_y), (streets_x - node_size//2, streets_y), line_width)
+        pygame.draw.line(screen, WHITE, (streets_x + node_size//2, streets_y), (forest_x - node_size//2, forest_y), line_width)
+        pygame.draw.line(screen, WHITE, (forest_x + node_size//2, forest_y), (lake_x - node_size//2, lake_y), line_width)
+        pygame.draw.line(screen, WHITE, (lake_x + node_size//2, lake_y), (swamp_x - node_size//2, swamp_y), line_width)
         
         # Draw vertical connections
-        pygame.draw.line(screen, WHITE, (apartment_x, apartment_y - apartment_size//2), (rooftop_x, rooftop_y + rooftop_size//2), 2)
-        pygame.draw.line(screen, WHITE, (start_x, start_y - start_size//2), (room_x, room_y + room_size//2), 2)
-        pygame.draw.line(screen, WHITE, (streets_x, streets_y + streets_size//2), (sewer_x, sewer_y - sewer_size//2), 2)
+        pygame.draw.line(screen, WHITE, (apartment_x, apartment_y - node_size//2), (rooftop_x, rooftop_y + node_size//2), line_width)
+        pygame.draw.line(screen, WHITE, (start_x, start_y - node_size//2), (room_x, room_y + node_size//2), line_width)
+        pygame.draw.line(screen, WHITE, (streets_x, streets_y + node_size//2), (sewer_x, sewer_y - node_size//2), line_width)
         
         # Draw all nodes with appropriate colors based on current location
         
         # City
         city_color = (120, 70, 70) if current_env == 'city' else (90, 70, 70)
-        pygame.draw.rect(screen, city_color, (city_x - city_size//2, city_y - city_size//2, city_size, city_size))
+        pygame.draw.rect(screen, city_color, (city_x - node_size//2, city_y - node_size//2, node_size, node_size))
         
         # Apartment
         apt_color = (70, 70, 120) if current_env == 'apartment' else (70, 70, 90)
-        pygame.draw.rect(screen, apt_color, (apartment_x - apartment_size//2, apartment_y - apartment_size//2, apartment_size, apartment_size))
+        pygame.draw.rect(screen, apt_color, (apartment_x - node_size//2, apartment_y - node_size//2, node_size, node_size))
         
         # Starting building
         start_color = (70, 70, 120) if current_env == 'start' else (70, 70, 90)
-        pygame.draw.rect(screen, start_color, (start_x - start_size//2, start_y - start_size//2, start_size, start_size))
+        pygame.draw.rect(screen, start_color, (start_x - node_size//2, start_y - node_size//2, node_size, node_size))
         
         # Streets
         streets_color = (80, 80, 80) if current_env == 'streets' else (60, 60, 60)
-        pygame.draw.rect(screen, streets_color, (streets_x - streets_size//2, streets_y - streets_size//2, streets_size, streets_size))
+        pygame.draw.rect(screen, streets_color, (streets_x - node_size//2, streets_y - node_size//2, node_size, node_size))
         
         # Forest
         forest_color = (70, 120, 70) if current_env == 'forest' else (50, 90, 50)
-        pygame.draw.rect(screen, forest_color, (forest_x - forest_size//2, forest_y - forest_size//2, forest_size, forest_size))
+        pygame.draw.rect(screen, forest_color, (forest_x - node_size//2, forest_y - node_size//2, node_size, node_size))
         
         # Lake
         lake_color = (70, 70, 180) if current_env == 'lake' else (50, 50, 150)
-        pygame.draw.rect(screen, lake_color, (lake_x - lake_size//2, lake_y - lake_size//2, lake_size, lake_size))
+        pygame.draw.rect(screen, lake_color, (lake_x - node_size//2, lake_y - node_size//2, node_size, node_size))
         
         # Swamp
         swamp_color = (100, 120, 70) if current_env == 'swamp' else (70, 90, 50)
-        pygame.draw.rect(screen, swamp_color, (swamp_x - swamp_size//2, swamp_y - swamp_size//2, swamp_size, swamp_size))
+        pygame.draw.rect(screen, swamp_color, (swamp_x - node_size//2, swamp_y - node_size//2, node_size, node_size))
         
         # Rooftop
         roof_color = (100, 120, 120) if current_env == 'rooftop' else (80, 90, 90)
-        pygame.draw.rect(screen, roof_color, (rooftop_x - rooftop_size//2, rooftop_y - rooftop_size//2, rooftop_size, rooftop_size))
+        pygame.draw.rect(screen, roof_color, (rooftop_x - node_size//2, rooftop_y - node_size//2, node_size, node_size))
         
         # Room
         room_color = (120, 100, 50) if current_env == 'room' else (90, 80, 50)
-        pygame.draw.rect(screen, room_color, (room_x - room_size//2, room_y - room_size//2, room_size, room_size))
+        pygame.draw.rect(screen, room_color, (room_x - node_size//2, room_y - node_size//2, node_size, node_size))
         
         # Sewer
         sewer_color = (70, 90, 100) if current_env == 'sewer' else (60, 70, 80)
-        pygame.draw.rect(screen, sewer_color, (sewer_x - sewer_size//2, sewer_y - sewer_size//2, sewer_size, sewer_size))
+        pygame.draw.rect(screen, sewer_color, (sewer_x - node_size//2, sewer_y - node_size//2, node_size, node_size))
         
-        # Add labels with smaller font to fit all areas
-        font = pygame.font.SysFont(None, 12)
+        # Add glowing effect for current environment
+        if current_env in ['city', 'apartment', 'start', 'streets', 'forest', 'lake', 'swamp', 'rooftop', 'room', 'sewer']:
+            # Get the position of the current environment
+            current_x, current_y = 0, 0
+            if current_env == 'city': current_x, current_y = city_x, city_y
+            elif current_env == 'apartment': current_x, current_y = apartment_x, apartment_y
+            elif current_env == 'start': current_x, current_y = start_x, start_y
+            elif current_env == 'streets': current_x, current_y = streets_x, streets_y
+            elif current_env == 'forest': current_x, current_y = forest_x, forest_y
+            elif current_env == 'lake': current_x, current_y = lake_x, lake_y
+            elif current_env == 'swamp': current_x, current_y = swamp_x, swamp_y
+            elif current_env == 'rooftop': current_x, current_y = rooftop_x, rooftop_y
+            elif current_env == 'room': current_x, current_y = room_x, room_y
+            elif current_env == 'sewer': current_x, current_y = sewer_x, sewer_y
+            
+            # Pulse effect for current location
+            pulse = (math.sin(pygame.time.get_ticks() * 0.005) + 1) * 0.5  # 0 to 1
+            pulse_size = int(node_size + (10 * pulse * scale_factor))
+            pulse_surface = pygame.Surface((pulse_size * 2, pulse_size * 2), pygame.SRCALPHA)
+            pygame.draw.circle(pulse_surface, (255, 255, 0, 100), (pulse_size, pulse_size), pulse_size)
+            screen.blit(pulse_surface, (current_x - pulse_size, current_y - pulse_size))
+        
+        # Add labels with font size scaled based on map size
+        font_size = 12 if not is_fullscreen else 20
+        font = pygame.font.SysFont(None, font_size)
         
         city_label = font.render("City", True, WHITE)
         apt_label = font.render("Apt", True, WHITE)
@@ -464,19 +484,28 @@ class GameUI:
         roof_label = font.render("Roof", True, WHITE)
         sewer_label = font.render("Sewer", True, WHITE)
         
-        # Draw all labels below their nodes except for verticl ones
-        screen.blit(city_label, (city_x - city_label.get_width()//2, city_y + city_size//2 + 3))
-        screen.blit(apt_label, (apartment_x - apt_label.get_width()//2, apartment_y + apartment_size//2 + 3))
-        screen.blit(start_label, (start_x - start_label.get_width()//2, start_y + start_size//2 + 3))
-        screen.blit(streets_label, (streets_x - streets_label.get_width()//2, streets_y + streets_size//2 + 3))
-        screen.blit(forest_label, (forest_x - forest_label.get_width()//2, forest_y + forest_size//2 + 3))
-        screen.blit(lake_label, (lake_x - lake_label.get_width()//2, lake_y + lake_size//2 + 3))
-        screen.blit(swamp_label, (swamp_x - swamp_label.get_width()//2, swamp_y + swamp_size//2 + 3))
+        # Label offset scales with node size
+        label_offset = int(node_size//2 + 3 * scale_factor)
         
-        # Draw vertical connection labels to the side
-        screen.blit(room_label, (room_x - room_label.get_width() - 3, room_y - room_label.get_height()//2))
-        screen.blit(roof_label, (rooftop_x - roof_label.get_width() - 3, rooftop_y - roof_label.get_height()//2))
-        screen.blit(sewer_label, (sewer_x + sewer_size//2 + 3, sewer_y - sewer_label.get_height()//2))
+        # Draw all labels below their nodes
+        screen.blit(city_label, (city_x - city_label.get_width()//2, city_y + label_offset))
+        screen.blit(apt_label, (apartment_x - apt_label.get_width()//2, apartment_y + label_offset))
+        screen.blit(start_label, (start_x - start_label.get_width()//2, start_y + label_offset))
+        screen.blit(streets_label, (streets_x - streets_label.get_width()//2, streets_y + label_offset))
+        screen.blit(forest_label, (forest_x - forest_label.get_width()//2, forest_y + label_offset))
+        screen.blit(lake_label, (lake_x - lake_label.get_width()//2, lake_y + label_offset))
+        screen.blit(swamp_label, (swamp_x - swamp_label.get_width()//2, swamp_y + label_offset))
+        
+        # Draw vertical labels with different positioning
+        screen.blit(room_label, (room_x - room_label.get_width()//2, room_y - label_offset - room_label.get_height()))
+        screen.blit(roof_label, (rooftop_x - roof_label.get_width()//2, rooftop_y - label_offset - roof_label.get_height()))
+        screen.blit(sewer_label, (sewer_x - sewer_label.get_width()//2, sewer_y + label_offset))
+        
+        # Add map title for minimap (not for fullscreen since it already has one)
+        if not is_fullscreen:
+            title_font = pygame.font.SysFont(None, 14)
+            title = title_font.render("MAP", True, WHITE)
+            screen.blit(title, (minimap_x + minimap_width//2 - title.get_width()//2, minimap_y + 3))
 
     def draw_upgrades_menu(self, screen, score, available_upgrades, selected_index, player_stats=None):
         """Draw the upgrades menu popup"""
@@ -640,35 +669,6 @@ class GameUI:
                     (self.WIDTH//2 - quit_text.get_width()//2, 
                      self.HEIGHT//2 + quit_text.get_height()*2)) 
 
-    def draw_reload_circle(self, screen, reload_progress, mouse_pos, size=20, color=(255, 0, 0, 180)):
-        """
-        Draw a circular reload indicator around the crosshair
-        
-        Parameters:
-        - screen: The pygame surface to draw on
-        - reload_progress: Float from 0.0 to 1.0 representing reload progress
-        - mouse_pos: Tuple (x, y) with the current mouse position
-        - size: Size of the circle (radius)
-        - color: Color of the circle indicator (RGBA)
-        """
-        if reload_progress >= 1.0:
-            return  # Don't draw when reload is complete
-            
-        # Create a surface with per-pixel alpha
-        circle_surface = pygame.Surface((size*2, size*2), pygame.SRCALPHA)
-        
-        # Calculate the angle for the arc (0 to 360 degrees, converted to radians)
-        angle = reload_progress * 2 * math.pi
-        
-        # Draw the arc representing the reload timer
-        pygame.draw.arc(circle_surface, color, 
-                       (0, 0, size*2, size*2),  # Rect
-                       0, angle,  # Start and end angles
-                       width=3)  # Line width
-                       
-        # Draw the circle at the mouse position
-        screen.blit(circle_surface, 
-                   (mouse_pos[0] - size, mouse_pos[1] - size))  # Centered on mouse 
 
     def draw_inventory(self, screen, inventory_system):
         """Draw the inventory grid UI in Resident Evil 4 style"""
@@ -912,7 +912,7 @@ class GameUI:
         title_x = (self.WIDTH - title_text.get_width()) // 2
         screen.blit(title_text, (title_x, 30))
         
-        # Calculate map dimensions
+        # Calculate map dimensions - make it larger for fullscreen
         map_width = int(self.WIDTH * 0.8)
         map_height = int(self.HEIGHT * 0.7)
         map_x = (self.WIDTH - map_width) // 2
@@ -922,63 +922,13 @@ class GameUI:
         pygame.draw.rect(screen, DARK_GRAY, (map_x, map_y, map_width, map_height))
         pygame.draw.rect(screen, WHITE, (map_x, map_y, map_width, map_height), 2)
         
-        # Draw map content if world_map is available
-        if world_map and hasattr(world_map, 'environments'):
-            # Scale factor for map
-            scale = min(map_width / 1000, map_height / 600) * self.map_scale
-            center_x = map_x + map_width // 2
-            center_y = map_y + map_height // 2
-            
-            # Draw connections first
-            for env_name, env_data in world_map.environments.items():
-                if hasattr(env_data, 'doors'):
-                    for door in env_data.doors:
-                        if hasattr(door, 'target_env'):
-                            target_env = door.target_env
-                            
-                            # Calculate origin position
-                            origin_x = center_x + int(env_data.position[0] * scale)
-                            origin_y = center_y + int(env_data.position[1] * scale)
-                            
-                            # Calculate target position
-                            if target_env in world_map.environments:
-                                target_pos = world_map.environments[target_env].position
-                                target_x = center_x + int(target_pos[0] * scale)
-                                target_y = center_y + int(target_pos[1] * scale)
-                                
-                                # Draw connection line
-                                pygame.draw.line(screen, LIGHT_GRAY, (origin_x, origin_y), (target_x, target_y), 2)
-            
-            # Draw each environment
-            for env_name, env_data in world_map.environments.items():
-                # Environment position
-                pos_x = center_x + int(env_data.position[0] * scale)
-                pos_y = center_y + int(env_data.position[1] * scale)
-                
-                # Determine node size and color
-                node_size = 15
-                node_color = BLUE
-                
-                # Highlight current environment
-                if env_name == current_env:
-                    node_size = 20
-                    node_color = GREEN
-                    # Draw pulsing effect
-                    pulse = (math.sin(pygame.time.get_ticks() * 0.005) + 1) * 0.5  # 0 to 1
-                    pulse_size = int(node_size + 10 * pulse)
-                    pulse_alpha = int(150 - 80 * pulse)
-                    pulse_surface = pygame.Surface((pulse_size * 2, pulse_size * 2), pygame.SRCALPHA)
-                    pygame.draw.circle(pulse_surface, (*node_color, pulse_alpha), (pulse_size, pulse_size), pulse_size)
-                    screen.blit(pulse_surface, (pos_x - pulse_size, pos_y - pulse_size))
-                
-                # Draw node
-                pygame.draw.circle(screen, node_color, (pos_x, pos_y), node_size)
-                
-                # Draw name
-                name_text = self.small_font.render(env_name.capitalize(), True, WHITE)
-                name_x = pos_x - name_text.get_width() // 2
-                name_y = pos_y + node_size + 5
-                screen.blit(name_text, (name_x, name_y))
+        # Use the same drawing logic as the minimap but with larger dimensions
+        if world_map and hasattr(world_map, 'draw_map'):
+            # If world_map has its own draw method, use it
+            world_map.draw_map(screen, map_x, map_y, map_width, map_height, current_env)
+        else:
+            # Use our fixed implementation with larger scale
+            self._draw_minimap_fixed(screen, map_x, map_y, map_width, map_height, current_env)
         
         # Draw instructions at bottom
         instructions = self.small_font.render("Press M or ESC to close map", True, WHITE)
@@ -1013,25 +963,51 @@ class GameUI:
         debug_text = self.small_font.render(f"Player Pos: ({int(player_x)}, {int(player_y)})", True, WHITE)
         screen.blit(debug_text, (10, 100))
     
-    def draw_reload_indicator(self, screen, is_reloading, reload_progress):
-        """Draw reload indicator when weapon is reloading"""
-        if not is_reloading:
-            return
+    
+    
+    def draw_reload_circle(self, screen, reload_progress, mouse_pos, size=20, color=(255, 0, 0, 180)):
+        """
+        Draw a circular reload indicator around the crosshair
+        
+        Parameters:
+        - screen: The pygame surface to draw on
+        - reload_progress: Float from 0.0 to 1.0 representing reload progress
+        - mouse_pos: Tuple (x, y) with the current mouse position
+        - size: Size of the circle (radius)
+        - color: Color of the circle indicator (RGBA)
+        """
+        if reload_progress >= 1.0:
+            return  # Don't draw when reload is complete
             
-        reload_text = self.font.render("RELOADING", True, YELLOW)
-        x = (self.WIDTH - reload_text.get_width()) // 2
-        y = self.HEIGHT - 100
-        screen.blit(reload_text, (x, y))
+        # Create a surface with per-pixel alpha
+        circle_surface = pygame.Surface((size*2, size*2), pygame.SRCALPHA)
         
-        # Progress bar
-        bar_width = 200
-        bar_height = 10
-        outline_rect = pygame.Rect((self.WIDTH - bar_width) // 2, y + 30, bar_width, bar_height)
-        fill_rect = pygame.Rect((self.WIDTH - bar_width) // 2, y + 30, 
-                               int(bar_width * reload_progress), bar_height)
+        # Calculate the angle for the arc (0 to 360 degrees, converted to radians)
+        angle = reload_progress * 2 * math.pi
         
-        pygame.draw.rect(screen, (100, 100, 100), outline_rect)
-        pygame.draw.rect(screen, YELLOW, fill_rect)
+        # Draw the arc representing the reload timer
+        pygame.draw.arc(circle_surface, color, 
+                       (0, 0, size*2, size*2),  # Rect
+                       0, angle,  # Start and end angles
+                       width=3)  # Line width
+                       
+        # Draw the circle at the mouse position
+        screen.blit(circle_surface, 
+                   (mouse_pos[0] - size, mouse_pos[1] - size))  # Centered on mouse 
+
+    def draw_reload_indicator(self, screen, is_reloading, reload_progress, font, color=(255, 255, 0)):
+        """Draw a text indicator showing reload progress"""
+        if is_reloading:
+            # Calculate percentage and create text
+            percentage = int(reload_progress * 100)
+            reload_text = font.render(f"Reloading... {percentage}%", True, color)
+            
+            # Position at the bottom center of the screen
+            x = (screen.get_width() - reload_text.get_width()) // 2
+            y = screen.get_height() - 100
+            
+            # Draw the text
+            screen.blit(reload_text, (x, y))
     
     def draw_wave_start_text(self, screen, wave_number, progress):
         """Draw wave start announcement with animation"""
@@ -1084,7 +1060,7 @@ class GameUI:
         y = (self.HEIGHT - text_surface.get_height()) // 3
         screen.blit(text_surface, (x, y))
     
-    def draw_crosshair(self, screen, mouse_pos):
+    def draw_crosshair(self, mouse_pos):
         """Draw a crosshair at the mouse position for aiming"""
         x, y = mouse_pos
         size = 10  # Size of the crosshair
@@ -1094,11 +1070,11 @@ class GameUI:
         color = RED
         
         # Draw horizontal and vertical lines
-        pygame.draw.line(screen, color, (x - size, y), (x + size, y), thickness)
-        pygame.draw.line(screen, color, (x, y - size), (x, y + size), thickness)
+        pygame.draw.line(self.screen, color, (x - size, y), (x + size, y), thickness)
+        pygame.draw.line(self.screen, color, (x, y - size), (x, y + size), thickness)
         
         # Optional: add a small circle in the center for better precision
-        pygame.draw.circle(screen, color, (x, y), 2)
+        pygame.draw.circle(self.screen, color, (x, y), 2)
         
     def draw_stat_upgrade_menu(self, screen, stats, current_selection, upgrade_points):
         """Draw the stat upgrade menu"""
@@ -1163,3 +1139,22 @@ class GameUI:
         # Resume instruction
         resume_text = self.small_font.render("Press ESC to resume", True, WHITE)
         screen.blit(resume_text, ((self.WIDTH - resume_text.get_width()) // 2, self.HEIGHT // 2)) 
+        
+        
+    def draw_score(self, screen, score, font, color=(255, 255, 255)):
+        """Draw the player's score"""
+        score_text = font.render(f"Score: {score}", True, color)
+        screen.blit(score_text, (10, 30))
+        
+
+    def draw_wave_info(self, wave, font, color=(255, 255, 255)):
+        """Draw the current wave information"""
+        wave_text = font.render(f"Wave: {wave}", True, color)
+        self.screen.blit(wave_text, (self.WIDTH - wave_text.get_width() - 10, 10))
+
+    def draw_fps(self, fps, font, color=(255, 255, 255)):
+        """Draw the current FPS"""
+        fps_text = font.render(f"FPS: {int(fps)}", True, color)
+        self.screen.blit(fps_text, (self.WIDTH - fps_text.get_width() - 10, 40))
+
+            

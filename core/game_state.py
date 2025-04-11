@@ -42,7 +42,7 @@ class GameState:
             "fire_rate": 1.0,   # Base fire rate multiplier (higher = faster)
             "reload_speed": 1.0, # Base reload speed multiplier (higher = faster)
             "move_speed": 1.0,   # Base movement speed multiplier
-            "max_health": 10     # Maximum health
+            "max_health": 100     # Maximum health
         }
         
         # Stat upgrade costs - increases with each purchase
@@ -51,7 +51,7 @@ class GameState:
             "fire_rate": 120,
             "reload_speed": 80,
             "move_speed": 75,
-            "max_health": 150
+            "max_health": 500
         }
         
         # Stat upgrade levels
@@ -137,7 +137,7 @@ class GameState:
         self.selected_upgrade = 0
         
         # Environment tracking
-        self.in_room = False  # Whether player is in the room or main area
+        self.in_safe_room = False  # Whether player is in the room or main area
         self.current_environment = 'building'  # Default environment
 
         # Weapons and equipment
@@ -405,3 +405,4 @@ class GameState:
         
         # Set ammo to max after a delay (handled in main game loop)
         return True 
+    

@@ -1,8 +1,7 @@
 import pygame
 from config import *
 
-# Set up display dimensions first
-WIDTH, HEIGHT = 1000, 600
+
 
 
 # Initialize pygame and its mixer first, before any other imports
@@ -15,20 +14,17 @@ game_font = pygame.font.SysFont(None, 32)
 small_font = pygame.font.SysFont(None, 24)
 large_font = pygame.font.SysFont(None, 48)
 
-# Initialize clock for frame timing
 clock = pygame.time.Clock()
-
 # Set up screen after pygame is initialized
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Zombie Survival")
 
-# Now import game modules after pygame is initialized
 from zombie_types import ZOMBIE_TYPES, initialize_sounds as init_zombie_sounds
 from weapon_types import WEAPON_TYPES, LETHAL_TYPES, initialize_sounds as init_weapon_sounds
-from ui import GameUI
+from ui.ui import GameUI
 from core.game_state import GameState
 from core.game_mechanics import GameMechanics
-from environments import EnvironmentManager
+from core.manager import EnvironmentManager
 from core.draw_game import GameRenderer
 from core.inventory_system import InventorySystem
 
@@ -94,9 +90,14 @@ player_image = pygame.transform.scale(player_image, (player_width, player_height
 init_zombie_sounds()
 init_weapon_sounds()
 
+
+
+
 # Initialize game systems
 game_state = GameState(WIDTH, HEIGHT)
-game_ui = GameUI(WIDTH, HEIGHT)
+game_ui = GameUI(WIDTH, HEIGHT, screen)
+# Initialize game renderer
+game_renderer = GameRenderer(screen, WIDTH, HEIGHT, player_width, player_height, player_image, floor_height=FLOOR_HEIGHT)
 game_mechanics = GameMechanics(game_state, WIDTH, HEIGHT, player_width, player_height, channels)
 
 # Initialize the Environment Manager
@@ -113,15 +114,8 @@ env_manager.load_environments({
 inventory = InventorySystem(max_slots=20, channels=channels)
 inventory.initialize_from_default()
 
-# Game constants
-gravity = 0.5
-jump_strength = -10
-player_speed = 4
-floor_height = 30
 
-# Initialize game renderer
-game_renderer = GameRenderer(screen, WIDTH, HEIGHT, player_width, player_height, player_image, 
-                            floor_height=floor_height)
+
 
 # Load environment backgrounds into the renderer
 for env_name, environment in env_manager.environments.items():
@@ -218,7 +212,7 @@ def draw_game():
     # Draw UI elements
     if not game_state.game_over:
         # Draw HUD with score, health, wave info
-        game_renderer.draw_score(game_state.score, game_font, (255, 255, 255))
+        game_ui.draw_score(screen, game_state.score, game_font, (255, 255, 255))
         game_ui.draw_health_bar(screen, game_state.player_health, game_state.stats["max_health"])
         
         if SHOW_WAVE_INFO:
@@ -227,40 +221,19 @@ def draw_game():
         if SHOW_FPS:
             game_renderer.draw_fps(clock.get_fps(), game_font)
             
-        # Draw weapon info
-        weapon_name = WEAPON_TYPES[game_state.current_weapon].name
-        ammo = game_state.weapon_ammo[game_state.current_weapon]
-        game_renderer.draw_weapon_info(weapon_name, ammo, game_font)
-        
-        # Draw lethal equipment info
-        if game_state.current_lethal:
-            lethal_name = LETHAL_TYPES[game_state.current_lethal].name
-            count = game_state.lethal_ammo[game_state.current_lethal]
-            game_renderer.draw_lethal_info(lethal_name, count, game_font)
-        
-        # Draw reload indicator
-        weapon = WEAPON_TYPES[game_state.current_weapon]
-        effective_reload_time = game_state.get_effective_reload_time(weapon.reload_time)
-        is_reloading = (game_state.weapon_ammo[game_state.current_weapon] < weapon.max_ammo and 
-                       pygame.time.get_ticks() - game_state.last_shot_time < effective_reload_time)
-        
-        if is_reloading:
-            reload_progress = (pygame.time.get_ticks() - game_state.last_shot_time) / effective_reload_time
-            game_renderer.draw_reload_indicator(True, reload_progress, game_font)
-        
         # Draw custom cursor in combat areas
-        if not game_state.in_room:
+        if not game_state.in_safe_room:
             mouse_pos = pygame.mouse.get_pos()
-            game_renderer.draw_crosshair(mouse_pos)
+            game_ui.draw_crosshair(mouse_pos)
         
         # Draw environment name when transitioning
         if env_manager.transition_text:
             progress = min(1.0, (pygame.time.get_ticks() - env_manager.transition_start_time) / 1000)
-            game_renderer.draw_environment_transition_text(env_manager.transition_text, game_font, progress)
+            game_ui.draw_environment_transition_text(screen, env_manager.transition_text, progress)
             
         # Draw upgrade menu if active
         if game_state.show_upgrades:
-            game_renderer.draw_stat_upgrade_menu(
+            game_ui.draw_stat_upgrade_menu(
                 game_state.stats, game_state.selected_upgrade,
                 game_font, small_font, game_state.upgrade_points
             )
@@ -272,7 +245,7 @@ def draw_game():
             progress = time_left / game_state.WAVE_INTERMISSION_MS
             
             if progress > 0:  # Only show during actual intermission
-                game_renderer.draw_wave_start_text(game_state.current_wave + 1, large_font, progress)
+                game_ui.draw_wave_start_text(screen, game_state.current_wave + 1, progress)
         
         # Draw notification messages
         game_ui.draw_messages(screen)
@@ -359,7 +332,7 @@ def handle_door_interaction(keys):
                 game_ui.show_message(f"Entered {target_env.capitalize()}", 2000)
                 
                 # Update game state
-                game_state.in_room = (target_env in ['room', 'rooftop'])  # Treat both room and rooftop as safe areas
+                game_state.in_safe_room = (target_env in ['room', 'rooftop'])  # Treat both room and rooftop as safe areas
                 game_state.current_environment = env_manager.get_current_environment().name
 
 def check_room_interactions(keys):
@@ -486,7 +459,7 @@ def update_horde_sound():
             if channels['horde'].get_busy():
                 channels['horde'].fadeout(1000)  # Fade out over 1 second
     # Normal wave active behavior
-    elif game_state.wave_active and not game_state.in_room:
+    elif game_state.wave_active and not game_state.in_safe_room:
         # Reset to normal volume during active wave
         channels['horde'].set_volume(0.3)
         
@@ -582,6 +555,7 @@ def main():
                         if slot.item and slot.item.id == 'pistol':
                             inventory.equip_item(i)
                             game_state.current_weapon = 'pistol'
+                            game_state.is_manually_reloading = False  # Reset reload state
                             break
                 elif event.key == pygame.K_2:
                     # Equip shotgun if available
@@ -589,6 +563,7 @@ def main():
                         if slot.item and slot.item.id == 'shotgun':
                             inventory.equip_item(i)
                             game_state.current_weapon = 'shotgun'
+                            game_state.is_manually_reloading = False  # Reset reload state
                             break
                 elif event.key == pygame.K_3:
                     # Equip SMG if available
@@ -596,6 +571,7 @@ def main():
                         if slot.item and slot.item.id == 'smg':
                             inventory.equip_item(i)
                             game_state.current_weapon = 'smg'
+                            game_state.is_manually_reloading = False  # Reset reload state
                             break
                 elif event.key == pygame.K_4:
                     # Equip assault rifle if available
@@ -603,6 +579,7 @@ def main():
                         if slot.item and slot.item.id == 'ar':
                             inventory.equip_item(i)
                             game_state.current_weapon = 'ar'
+                            game_state.is_manually_reloading = False  # Reset reload state
                             break
                 elif event.key == pygame.K_5:
                     # Equip sniper if available
@@ -610,6 +587,7 @@ def main():
                         if slot.item and slot.item.id == 'sniper':
                             inventory.equip_item(i)
                             game_state.current_weapon = 'sniper'
+                            game_state.is_manually_reloading = False  # Reset reload state
                             break
                 elif event.key == pygame.K_6:
                     # Equip grenade launcher if available
@@ -617,6 +595,7 @@ def main():
                         if slot.item and slot.item.id == 'grenade_launcher':
                             inventory.equip_item(i)
                             game_state.current_weapon = 'grenade_launcher'
+                            game_state.is_manually_reloading = False  # Reset reload state
                             break
                 elif event.key == pygame.K_f:
                     # Throw current lethal equipment
@@ -663,7 +642,7 @@ def main():
                     if game_state.purchase_upgrade():
                         # Play purchase sound
                         channels['pickup'].play(pickup_sound)
-                elif event.key == pygame.K_r and not game_state.in_room and not game_state.game_over:
+                elif event.key == pygame.K_r and not game_state.in_safe_room and not game_state.game_over:
                     # Manual weapon reload
                     if inventory.reload_weapon():
                         # Reset fire time to allow shooting immediately after reload
@@ -689,6 +668,7 @@ def main():
                     new_weapon_idx = inventory.cycle_weapon()
                     if new_weapon_idx is not None:
                         game_state.current_weapon = inventory.slots[new_weapon_idx].item.id
+                        game_state.is_manually_reloading = False  # Reset reload state
                         game_ui.show_message(f"Switched to {inventory.slots[new_weapon_idx].item.name}", 1000)
                 elif event.key == pygame.K_g:
                     # Cycle lethal equipment
@@ -743,7 +723,7 @@ def main():
         safe_areas = ['room', 'rooftop']
         
         # Update game state with current environment
-        game_state.in_room = (current_env.name in safe_areas)  # Treat rooftop like room as safe area
+        game_state.in_safe_room = (current_env.name in safe_areas)  # Treat rooftop like room as safe area
         
         # If the environment has changed, clear combat elements
         if game_state.current_environment != current_env.name:
@@ -765,7 +745,7 @@ def main():
         game_state.current_environment = current_env.name
 
         # Show or hide mouse cursor based on environment
-        pygame.mouse.set_visible(game_state.in_room)
+        pygame.mouse.set_visible(game_state.in_safe_room)
 
         # Update horde sound based on wave state
         update_horde_sound()
@@ -779,20 +759,11 @@ def main():
                     zombie_type.spawn_rate = max(5, int(zombie_type.spawn_rate * 0.9))
 
             # Update game mechanics based on current environment
-            if game_state.in_room:
+            if game_state.in_safe_room:
                 # Only handle player movement when in safe areas (room or rooftop), no combat
                 game_mechanics.move_player(keys, current_env.platforms)
             else:
-                # Get current equipped weapon stats for game mechanics
-                equipped_weapon = inventory.get_equipped_weapon()
-                if equipped_weapon:
-                    # Sync weapon ammo between inventory and game state
-                    game_state.weapon_ammo[game_state.current_weapon] = equipped_weapon.current_ammo
-                    
-                    # In GOD MODE, always keep weapons fully loaded
-                    if GOD_MODE:
-                        equipped_weapon.current_ammo = equipped_weapon.max_ammo
-                        game_state.weapon_ammo[game_state.current_weapon] = equipped_weapon.max_ammo
+
 
                 # Full gameplay when in any combat area (building or street)
                 game_mechanics.move_player(keys, current_env.platforms, game_state.stats["move_speed"])
@@ -802,12 +773,21 @@ def main():
                 game_mechanics.update_lethals(current_env.platforms)
                 game_mechanics.check_collisions()
                 
+                
+                # Get current equipped weapon stats for game mechanics
+                equipped_weapon = inventory.get_equipped_weapon()
+                # if equipped_weapon:                    
+                    # In GOD MODE, always keep weapons fully loaded
+                    # if GOD_MODE:
+                    #     equipped_weapon.current_ammo = equipped_weapon.max_ammo
+                    #     game_state.weapon_ammo[game_state.current_weapon] = equipped_weapon.max_ammo
+                    
                 # Sync ammo count from game mechanics back to inventory
                 if equipped_weapon and game_state.current_weapon in game_state.weapon_ammo:
                     equipped_weapon.current_ammo = game_state.weapon_ammo[game_state.current_weapon]
                 
                 # Only spawn during active wave periods and not in safe areas
-                if game_state.wave_active and not game_state.in_room:
+                if game_state.wave_active and not game_state.in_safe_room:
                     game_mechanics.spawn_zombies(game_state.base_spawn_rate)
                     
                 game_mechanics.update_weapon_state()
