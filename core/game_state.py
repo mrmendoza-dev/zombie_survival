@@ -12,7 +12,7 @@ class GameState:
         # Player state
         self.player_x = 1
         self.player_y = self.HEIGHT
-        self.player_health = 3
+        self.player_health = 100
         self.player_facing_left = False
         self.player_vel_y = 0
         self.is_jumping = False
@@ -21,8 +21,10 @@ class GameState:
 
         # Game state
         self.score = 0
+        self.high_score = 0
+        self.paused = False  # Add paused flag
         self.current_wave = 1
-        self.wave_time = 5  # seconds per wave (set back to 60 for normal gameplay)
+        self.wave_time = 30  # seconds per wave (set back to 60 for normal gameplay)
         self.wave_timer = self.wave_time * 1000  # convert to milliseconds
         self.wave_start_time = pygame.time.get_ticks()
         self.zombies_per_wave = 10
@@ -30,13 +32,17 @@ class GameState:
         self.show_game_over = False  # New flag to control game over screen
         self.game_over_start_time = 0  # Track when game over started
         
+        # Damage cooldown system
+        self.last_damage_time = 0
+        self.damage_cooldown = 1000  # 1 second cooldown between damage hits
+        
         # Player base stats
         self.stats = {
             "damage": 1.0,      # Base damage multiplier
             "fire_rate": 1.0,   # Base fire rate multiplier (higher = faster)
             "reload_speed": 1.0, # Base reload speed multiplier (higher = faster)
             "move_speed": 1.0,   # Base movement speed multiplier
-            "max_health": 3      # Maximum health
+            "max_health": 10     # Maximum health
         }
         
         # Stat upgrade costs - increases with each purchase
@@ -59,14 +65,17 @@ class GameState:
         
         # Advanced wave system
         self.wave_active = True  # Whether zombies should spawn (active wave vs intermission)
-        self.intermission_time = 30  # seconds for intermission between waves
+        self.intermission_time = 60  # seconds for intermission between waves
         self.intermission_timer = self.intermission_time * 1000  # convert to milliseconds
         self.intermission_start_time = 0  # When intermission started
+        self.intermission_end = 0  # When current intermission will end
+        self.WAVE_INTERMISSION_MS = 60000  # 60 seconds in milliseconds
         self.wave_completion = 0  # Percentage of wave completed (0-100)
         self.base_spawn_rate = 1.0  # Base multiplier for spawn rate
         
         # Upgrade system
         self.show_upgrades = False  # Whether to show the upgrades menu
+        self.upgrade_points = 0  # Points available for upgrades (equal to score)
         self.available_upgrades = [
             {
                 "name": "Damage",
@@ -102,7 +111,7 @@ class GameState:
             },
             {
                 "name": "Max Health",
-                "description": "Increase maximum health by 1",
+                "description": "Increase maximum health by 1 (Current: 10)",
                 "cost": self.stat_upgrade_costs["max_health"],
                 "icon": "❤️",
                 "stat": "max_health",
@@ -205,6 +214,7 @@ class GameState:
             result = upgrade["effect"]()
             if result:
                 self.score -= upgrade["cost"]
+                self.upgrade_points = self.score  # Update upgrade points
                 # Update the upgrades list with new costs
                 self.update_upgrade_costs()
                 return True
@@ -257,6 +267,7 @@ class GameState:
                 # Wave finished, start intermission
                 self.wave_active = False
                 self.intermission_start_time = current_time
+                self.intermission_end = current_time + self.intermission_timer
                 # Clear any remaining zombies at end of wave
                 self.zombies.clear()
                 return False  # No wave increment yet
@@ -321,16 +332,24 @@ class GameState:
     def add_score(self, points):
         if not self.game_over:
             self.score += points
+            self.upgrade_points = self.score  # Keep upgrade points in sync with score
 
     def take_damage(self, damage):
         if self.game_over:
             return True
             
         self.player_health -= damage
+        self.last_damage_time = pygame.time.get_ticks()
+        
         if self.player_health <= 0:
             self.game_over = True
             self.show_game_over = True
             self.game_over_start_time = pygame.time.get_ticks()
+            
+            # Update high score if current score is higher
+            if self.score > self.high_score:
+                self.high_score = self.score
+                
             # Clear all active game objects
             self.bullets.clear()
             self.zombies.clear()
@@ -350,4 +369,33 @@ class GameState:
         if keys[pygame.K_r]:  # R key to restart
             self.reset()
             return True
-        return False 
+        return False
+        
+    def reload_weapon(self, channels):
+        """Manually reload the current weapon"""
+        weapon = WEAPON_TYPES[self.current_weapon]
+        current_ammo = self.weapon_ammo[self.current_weapon]
+        
+        # Only reload if not at max capacity and not already reloading
+        current_time = pygame.time.get_ticks()
+        effective_reload_time = self.get_effective_reload_time(weapon.reload_time)
+        
+        # Check if we're already in the middle of a reload
+        if current_time - self.last_shot_time < effective_reload_time:
+            return False
+            
+        # Check if we're already at max ammo
+        if current_ammo >= weapon.max_ammo:
+            return False
+            
+        # Start the reload process
+        self.last_shot_time = current_time - int(effective_reload_time * 0.1)  # Small offset to prevent instant reload
+        
+        # Play reload sound
+        if 'reload' in channels:
+            # Find the appropriate reload sound based on weapon type
+            reload_sound = pygame.mixer.Sound(f'assets/weapons/{self.current_weapon}-reload.mp3')
+            channels['reload'].play(reload_sound)
+        
+        # Set ammo to max after a delay (handled in main game loop)
+        return True 
