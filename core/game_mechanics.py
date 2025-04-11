@@ -23,9 +23,13 @@ class GameMechanics:
         
         # Mouse shooting
         self.mouse_down = False
+        self.mouse_clicked = False  # Track if mouse is currently in clicked state (for auto weapons)
         self.last_mouse_shot_time = 0
         self.last_mouse_click_time = 0
         self.click_cooldown = 200  # ms, to prevent accidental double clicks
+        
+        # Keyboard shooting
+        self.space_pressed_last_frame = False  # Track if space was pressed last frame
 
     def move_player(self, keys, platforms, speed_multiplier=1.0):
         current_speed = self.player_speed * speed_multiplier
@@ -406,6 +410,7 @@ class GameMechanics:
         """
         weapon = WEAPON_TYPES[self.game_state.current_weapon]
         
+        # Check if we have ammo in the current weapon
         if self.game_state.weapon_ammo[self.game_state.current_weapon] > 0:
             # Play weapon sound on dedicated channel to avoid cutoffs
             if self.channels:
@@ -413,8 +418,10 @@ class GameMechanics:
             else:
                 weapon.sound.play()
                 
+            # Decrement ammo
             self.game_state.weapon_ammo[self.game_state.current_weapon] -= 1
             self.game_state.last_shot_time = pygame.time.get_ticks()
+            self.game_state.last_fire_time = pygame.time.get_ticks()  # Update both timers to fix shooting delay
             
             # Get player center position (where bullets originate)
             player_center_x = self.game_state.player_x + self.player_width // 2
@@ -518,31 +525,39 @@ class GameMechanics:
         current_time = pygame.time.get_ticks()
         weapon = WEAPON_TYPES[self.game_state.current_weapon]
         
+        # Apply fire rate modifier from player stats
+        effective_fire_rate = weapon.fire_rate / self.game_state.stats["fire_rate"]
+        
         # Keyboard shooting (spacebar)
         if keys[pygame.K_SPACE]:
-            if weapon.is_auto:
-                self.try_shoot()  # Will respect fire rate for automatic weapons
-            else:
-                # For non-auto weapons, only shoot if this is a new key press
-                if current_time - self.game_state.last_fire_time >= weapon.fire_rate:
-                    self.shoot_weapon()  # Traditional directional shooting
-                    self.game_state.last_fire_time = current_time
+            # Check if this is the first press or if auto-fire is enabled
+            if not self.space_pressed_last_frame or (weapon.is_auto and 
+                                             current_time - self.game_state.last_fire_time >= 
+                                             effective_fire_rate):
+                self.shoot_weapon(mouse_pos if mouse_pos else None)  # Pass mouse position for directional shooting
+                self.game_state.last_fire_time = current_time
+            self.space_pressed_last_frame = True
+        else:
+            self.space_pressed_last_frame = False
         
         # Mouse shooting if mouse data is provided
         if mouse_buttons and mouse_pos:
             # Left mouse button
-            if mouse_buttons[0]:  # Left click
-                # Check if this is a new click or if auto-fire is enabled
-                if not self.mouse_down or (weapon.is_auto and 
-                                         current_time - self.last_mouse_shot_time >= 
-                                         weapon.fire_rate / self.game_state.stats["fire_rate"]):
-                    # First click or enough time has passed for auto weapons
+            if mouse_buttons[0]:  # Left click is pressed
+                if not self.mouse_down:
+                    # This is a new click - always shoot immediately
                     self.shoot_weapon(mouse_pos)
                     self.last_mouse_shot_time = current_time
-                self.mouse_down = True
+                    self.mouse_down = True
+                    self.mouse_clicked = True
+                elif weapon.is_auto and self.mouse_clicked and current_time - self.last_mouse_shot_time >= effective_fire_rate:
+                    # For automatic weapons, continue firing if held down
+                    self.shoot_weapon(mouse_pos)
+                    self.last_mouse_shot_time = current_time
             else:
                 # Reset mouse state when button is released
                 self.mouse_down = False
+                self.mouse_clicked = False
 
     def throw_lethal(self, mouse_pos=None):
         if self.game_state.lethal_ammo[self.game_state.current_lethal] > 0:
@@ -741,6 +756,9 @@ class GameMechanics:
             if self.game_state.weapon_ammo[self.game_state.current_weapon] < weapon.max_ammo:
                 # Reload the weapon
                 self.game_state.weapon_ammo[self.game_state.current_weapon] = weapon.max_ammo
+                
+                # Reset the fire time to allow shooting immediately after reload
+                self.game_state.last_fire_time = 0
                 
                 # Play reload sound if we have dedicated channels
                 if self.channels and 'reload' in self.channels:

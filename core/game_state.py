@@ -390,12 +390,18 @@ class GameState:
             
         # Start the reload process
         self.last_shot_time = current_time - int(effective_reload_time * 0.1)  # Small offset to prevent instant reload
+        self.last_fire_time = 0  # Reset fire time to allow shooting immediately after reload
         
         # Play reload sound
         if 'reload' in channels:
             # Find the appropriate reload sound based on weapon type
-            reload_sound = pygame.mixer.Sound(f'assets/weapons/{self.current_weapon}-reload.mp3')
-            channels['reload'].play(reload_sound)
+            try:
+                reload_sound = pygame.mixer.Sound(f'assets/weapons/{self.current_weapon}-reload.mp3')
+                channels['reload'].play(reload_sound)
+            except:
+                # Fallback to generic reload sound
+                reload_sound = pygame.mixer.Sound("assets/weapons/sounds/reload.mp3")
+                channels['reload'].play(reload_sound)
         
         # Set ammo to max after a delay (handled in main game loop)
         return True 

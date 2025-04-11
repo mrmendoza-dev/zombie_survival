@@ -1,6 +1,7 @@
 import pygame
 import random
 import math
+from config import *
 
 # Colors
 WHITE = (255, 255, 255)
@@ -13,6 +14,11 @@ DARK_GRAY = (50, 50, 50)
 LIGHT_GRAY = (200, 200, 200)
 ORANGE = (255, 165, 0)
 CYAN = (0, 200, 200)
+TRANSPARENT_BLACK = (0, 0, 0, 180)
+GRID_BORDER = (100, 100, 100)
+SELECTED_SLOT = (255, 255, 150, 100)
+
+
 
 class GameUI:
     def __init__(self, screen_width, screen_height):
@@ -25,6 +31,27 @@ class GameUI:
         
         # For temporary messages
         self.messages = []  # List of [message_text, end_time] elements
+        
+        # Inventory UI
+        self.show_inventory = False
+        self.show_map = False
+        self.inventory_selected_slot = 0
+        self.inventory_grid_size = (5, 4)  # 5 columns x 4 rows
+        self.inventory_cell_size = 80
+        self.inventory_padding = 10
+        self.inventory_description_height = 100
+        
+        # Animation effects
+        self.inventory_open_progress = 0  # 0 to 1 for open animation
+        self.inventory_open_speed = 0.1  # Speed of open/close animation
+        
+        # Map display settings
+        self.map_scale = 1.2
+        self.map_padding = 20
+        
+        # Last used item name and description (for tooltips)
+        self.last_item = None
+        self.tooltip_timer = 0
 
     def show_message(self, message, duration=2000):
         """
@@ -80,26 +107,31 @@ class GameUI:
             y_offset += 40
 
     def draw_health_bar(self, screen, player_health, max_health=10):
-        health_bar_width = 200
+        # Calculate health bar width to be about 1/3 of screen width
+        health_bar_width = int(self.WIDTH / 3)
         health_bar_height = 20
+        
+        # Position it at top left
+        health_bar_x = 10
+        health_bar_y = 10
         
         # Create semi-transparent black background
         bg_surface = pygame.Surface((health_bar_width + 4, health_bar_height + 4), pygame.SRCALPHA)
         bg_surface.fill((0, 0, 0, 180))
-        screen.blit(bg_surface, (8, 8))
+        screen.blit(bg_surface, (health_bar_x - 2, health_bar_y - 2))
         
         # Draw red background bar
-        pygame.draw.rect(screen, RED, (10, 10, health_bar_width, health_bar_height))
+        pygame.draw.rect(screen, RED, (health_bar_x, health_bar_y, health_bar_width, health_bar_height))
         
         # Draw green health bar on top
         if player_health > 0:
-            pygame.draw.rect(screen, (0, 255, 0), (10, 10, health_bar_width * (player_health / max_health), health_bar_height))
+            pygame.draw.rect(screen, (0, 255, 0), (health_bar_x, health_bar_y, health_bar_width * (player_health / max_health), health_bar_height))
         
-        # No health counter text as requested
+        # No health counter text or numbers displayed as requested
 
     def draw_score(self, screen, score):
-        score_text = self.font.render(f"Score: {score}", True, WHITE)
-        screen.blit(score_text, (10, 35))
+        # Remove the score display from the bottom left
+        pass
 
     def draw_wave_info(self, screen, current_wave, time_remaining, is_intermission=False, wave_completion=0):
         minutes = time_remaining // 60
@@ -190,9 +222,22 @@ class GameUI:
         weapon_y_offset = (equipment_height - weapon_sprite_height) // 2
         screen.blit(scaled_weapon, (weapon_x + 5, weapon_y + weapon_y_offset))
         
-        # Draw weapon ammo count
-        ammo_text = self.font.render(f"{weapon_ammo[current_weapon]}/{weapon.max_ammo}", True, WHITE)
-        screen.blit(ammo_text, (weapon_x - 5, weapon_y + equipment_height + 5))
+        # Draw a small ammo indicator dot or bar instead of text
+        ammo_percent = weapon_ammo[current_weapon] / max(1, weapon.max_ammo)
+        ammo_bar_width = equipment_box_size - 10
+        ammo_bar_height = 4
+        
+        # Draw ammo bar background
+        pygame.draw.rect(screen, DARK_GRAY, 
+                      (weapon_x + 5, weapon_y + equipment_height - ammo_bar_height - 3, 
+                       ammo_bar_width, ammo_bar_height))
+        
+        # Draw filled portion of ammo bar
+        if ammo_percent > 0:
+            fill_color = GREEN if ammo_percent > 0.5 else YELLOW if ammo_percent > 0.25 else RED
+            pygame.draw.rect(screen, fill_color, 
+                          (weapon_x + 5, weapon_y + equipment_height - ammo_bar_height - 3, 
+                           int(ammo_bar_width * ammo_percent), ammo_bar_height))
 
         # Calculate lethal position and scaling
         lethal_x = self.WIDTH - (equipment_box_size + equipment_margin)
@@ -210,12 +255,26 @@ class GameUI:
         lethal_y_offset = (equipment_height - lethal_sprite_height) // 2
         screen.blit(scaled_lethal, (lethal_x + 5, lethal_y + lethal_y_offset))
         
-        # Draw lethal count
-        lethal_text = self.font.render(f"x{lethal_ammo[current_lethal]}", True, WHITE)
-        screen.blit(lethal_text, (lethal_x - 5, lethal_y + equipment_height + 5))
+        # Draw small dots to represent lethal count instead of text
+        max_dots = 5  # Maximum dots to show
+        dot_size = 4
+        dot_spacing = 8
+        dots_to_show = min(lethal_ammo[current_lethal], max_dots)
         
-        # Draw mini-map below the equipment
-        self._draw_minimap(screen, equipment_margin, current_environment, world_map)
+        for i in range(dots_to_show):
+            dot_x = lethal_x + 5 + (i * dot_spacing)
+            dot_y = lethal_y + equipment_height - dot_size - 3
+            pygame.draw.circle(screen, WHITE, (dot_x, dot_y), dot_size)
+            
+        # If we have more lethals than max dots, show a "+" indicator
+        if lethal_ammo[current_lethal] > max_dots:
+            plus_text = self.small_font.render("+", True, WHITE)
+            screen.blit(plus_text, (lethal_x + 5 + (max_dots * dot_spacing), 
+                                  lethal_y + equipment_height - plus_text.get_height() - 3))
+        
+        # Draw mini-map below the equipment only if SHOW_UI_MAP is True
+        if SHOW_UI_MAP:
+            self._draw_minimap(screen, equipment_margin, current_environment, world_map)
         
     def _draw_minimap(self, screen, margin, current_env="start", world_map=None):
         """Draw a simple minimap showing the game areas"""
@@ -610,3 +669,497 @@ class GameUI:
         # Draw the circle at the mouse position
         screen.blit(circle_surface, 
                    (mouse_pos[0] - size, mouse_pos[1] - size))  # Centered on mouse 
+
+    def draw_inventory(self, screen, inventory_system):
+        """Draw the inventory grid UI in Resident Evil 4 style"""
+        if not self.show_inventory:
+            return
+            
+        # Calculate inventory window size
+        cols, rows = self.inventory_grid_size
+        inventory_width = cols * (self.inventory_cell_size + self.inventory_padding) + self.inventory_padding
+        inventory_height = rows * (self.inventory_cell_size + self.inventory_padding) + self.inventory_padding + self.inventory_description_height
+        
+        # Calculate centered position
+        inventory_x = (self.WIDTH - inventory_width) // 2
+        inventory_y = (self.HEIGHT - inventory_height) // 2
+        
+        # Apply open/close animation
+        if self.inventory_open_progress < 1:
+            self.inventory_open_progress += self.inventory_open_speed
+            if self.inventory_open_progress > 1:
+                self.inventory_open_progress = 1
+                
+        scaled_width = int(inventory_width * self.inventory_open_progress)
+        scaled_height = int(inventory_height * self.inventory_open_progress)
+        inventory_x = (self.WIDTH - scaled_width) // 2
+        inventory_y = (self.HEIGHT - scaled_height) // 2
+        
+        if scaled_width < 50 or scaled_height < 50:
+            return  # Don't draw until it's visible enough
+        
+        # Draw semi-transparent background
+        bg_surface = pygame.Surface((scaled_width, scaled_height), pygame.SRCALPHA)
+        bg_surface.fill((20, 20, 20, 230))  # Dark, more opaque background
+        screen.blit(bg_surface, (inventory_x, inventory_y))
+        
+        # Draw border
+        pygame.draw.rect(screen, LIGHT_GRAY, (inventory_x, inventory_y, scaled_width, scaled_height), 2)
+        
+        # Draw title
+        title_text = self.font.render("INVENTORY", True, WHITE)
+        title_x = inventory_x + (scaled_width - title_text.get_width()) // 2
+        screen.blit(title_text, (title_x, inventory_y + 10))
+        
+        # Only draw grid content when fully open
+        if self.inventory_open_progress < 0.95:
+            return
+            
+        # Calculate starting position for the grid
+        grid_start_x = inventory_x + self.inventory_padding
+        grid_start_y = inventory_y + self.inventory_padding + 40  # Extra space for title
+        
+        # Draw the inventory grid
+        item_counter = 0
+        selected_item = None
+        
+        for row in range(rows):
+            for col in range(cols):
+                # Calculate cell position
+                cell_x = grid_start_x + col * (self.inventory_cell_size + self.inventory_padding)
+                cell_y = grid_start_y + row * (self.inventory_cell_size + self.inventory_padding)
+                
+                # Check if slot is within inventory size
+                slot_index = item_counter
+                slot_has_item = (slot_index < inventory_system.max_slots and 
+                                inventory_system.slots[slot_index].item is not None)
+                
+                # Draw cell background
+                cell_bg_color = DARK_GRAY
+                cell_border_color = GRID_BORDER
+                
+                # Highlight selected slot
+                if slot_index == self.inventory_selected_slot:
+                    selected_surface = pygame.Surface((self.inventory_cell_size, self.inventory_cell_size), pygame.SRCALPHA)
+                    selected_surface.fill(SELECTED_SLOT)
+                    screen.blit(selected_surface, (cell_x, cell_y))
+                    cell_border_color = YELLOW
+                    
+                    # Store selected item for description
+                    if slot_has_item:
+                        selected_item = inventory_system.slots[slot_index].item
+                
+                # Draw cell background and border
+                pygame.draw.rect(screen, cell_bg_color, (cell_x, cell_y, self.inventory_cell_size, self.inventory_cell_size))
+                pygame.draw.rect(screen, cell_border_color, (cell_x, cell_y, self.inventory_cell_size, self.inventory_cell_size), 2)
+                
+                # Draw item if present
+                if slot_has_item:
+                    item = inventory_system.slots[slot_index].item
+                    quantity = inventory_system.slots[slot_index].quantity
+                    equipped = inventory_system.slots[slot_index].is_equipped
+                    
+                    # Draw item sprite or fallback color
+                    if item.sprite:
+                        # Scale sprite to fit cell
+                        sprite_size = min(self.inventory_cell_size - 20, self.inventory_cell_size - 20)
+                        scaled_sprite = pygame.transform.scale(item.sprite, (sprite_size, sprite_size))
+                        
+                        # Center sprite in cell
+                        sprite_x = cell_x + (self.inventory_cell_size - sprite_size) // 2
+                        sprite_y = cell_y + (self.inventory_cell_size - sprite_size) // 2
+                        
+                        screen.blit(scaled_sprite, (sprite_x, sprite_y))
+                    else:
+                        # Determine color based on item type
+                        item_colors = {
+                            'WEAPON': (150, 150, 255),    # Blue
+                            'LETHAL': (255, 150, 150),    # Red  
+                            'HEALTH': (150, 255, 150),    # Green
+                            'AMMO': (255, 255, 150),      # Yellow
+                            'KEY': (255, 150, 255),       # Purple
+                        }
+                        
+                        color = item_colors.get(item.item_type.name, (200, 200, 200))
+                        
+                        # Draw colored rectangle as fallback
+                        inner_size = self.inventory_cell_size - 20
+                        inner_x = cell_x + 10
+                        inner_y = cell_y + 10
+                        pygame.draw.rect(screen, color, (inner_x, inner_y, inner_size, inner_size))
+                    
+                    # Draw item name
+                    name_text = self.small_font.render(item.name, True, WHITE)
+                    name_x = cell_x + (self.inventory_cell_size - name_text.get_width()) // 2
+                    name_y = cell_y + 5
+                    screen.blit(name_text, (name_x, name_y))
+                    
+                    # Draw quantity for stackable items
+                    if quantity > 1:
+                        quantity_text = self.font.render(str(quantity), True, WHITE)
+                        quantity_x = cell_x + self.inventory_cell_size - quantity_text.get_width() - 5
+                        quantity_y = cell_y + self.inventory_cell_size - quantity_text.get_height() - 5
+                        screen.blit(quantity_text, (quantity_x, quantity_y))
+                    
+                    # Draw equipped indicator
+                    if equipped:
+                        equipped_text = self.small_font.render("E", True, GREEN)
+                        screen.blit(equipped_text, (cell_x + 5, cell_y + 5))
+                
+                item_counter += 1
+        
+        # Draw description area at the bottom
+        desc_y = grid_start_y + rows * (self.inventory_cell_size + self.inventory_padding)
+        desc_height = self.inventory_description_height
+        desc_width = inventory_width - 2 * self.inventory_padding
+        
+        pygame.draw.rect(screen, (40, 40, 40), (grid_start_x, desc_y, desc_width, desc_height))
+        pygame.draw.rect(screen, LIGHT_GRAY, (grid_start_x, desc_y, desc_width, desc_height), 1)
+        
+        # Draw item description
+        if selected_item:
+            # Draw item name
+            name_text = self.font.render(selected_item.name, True, WHITE)
+            screen.blit(name_text, (grid_start_x + 10, desc_y + 10))
+            
+            # Draw item description
+            desc_text = self.small_font.render(selected_item.description, True, LIGHT_GRAY)
+            screen.blit(desc_text, (grid_start_x + 10, desc_y + 45))
+            
+            # Draw item stats based on type
+            if hasattr(selected_item, 'damage'):
+                damage_text = self.small_font.render(f"Damage: {selected_item.damage}", True, ORANGE)
+                screen.blit(damage_text, (grid_start_x + 10, desc_y + 70))
+            
+            if hasattr(selected_item, 'current_ammo') and hasattr(selected_item, 'max_ammo'):
+                ammo_text = self.small_font.render(f"Ammo: {selected_item.current_ammo}/{selected_item.max_ammo}", True, YELLOW)
+                screen.blit(ammo_text, (grid_start_x + 200, desc_y + 70))
+        
+        # Draw controls at the bottom
+        controls_text = self.small_font.render("SPACE: Use/Equip | E: Discard | TAB: Close", True, LIGHT_GRAY)
+        controls_x = inventory_x + (scaled_width - controls_text.get_width()) // 2
+        screen.blit(controls_text, (controls_x, inventory_y + scaled_height - 25))
+    
+    def handle_inventory_input(self, event, inventory_system):
+        """Handle inventory-related inputs"""
+        if not self.show_inventory:
+            return False
+            
+        cols, rows = self.inventory_grid_size
+        max_slots = cols * rows
+        
+        if event.type == pygame.KEYDOWN:
+            # Grid navigation
+            if event.key == pygame.K_UP:
+                self.inventory_selected_slot = max(0, self.inventory_selected_slot - cols)
+                return True
+            elif event.key == pygame.K_DOWN:
+                self.inventory_selected_slot = min(max_slots - 1, self.inventory_selected_slot + cols)
+                return True
+            elif event.key == pygame.K_LEFT:
+                if self.inventory_selected_slot % cols > 0:
+                    self.inventory_selected_slot -= 1
+                return True
+            elif event.key == pygame.K_RIGHT:
+                if self.inventory_selected_slot % cols < cols - 1 and self.inventory_selected_slot < max_slots - 1:
+                    self.inventory_selected_slot += 1
+                return True
+            
+            # Item actions
+            elif event.key == pygame.K_SPACE:
+                # Use or equip the selected item
+                if self.inventory_selected_slot < inventory_system.max_slots:
+                    slot = inventory_system.slots[self.inventory_selected_slot]
+                    if slot.item:
+                        if slot.item.item_type.name in ['WEAPON', 'LETHAL']:
+                            inventory_system.equip_item(self.inventory_selected_slot)
+                        else:
+                            inventory_system.use_item(self.inventory_selected_slot)
+                return True
+            
+            # Close inventory
+            elif event.key == pygame.K_TAB or event.key == pygame.K_ESCAPE or event.key == pygame.K_i:
+                self.close_inventory()
+                return True
+                
+        return False
+        
+    def open_inventory(self):
+        """Open the inventory UI with animation"""
+        self.show_inventory = True
+        self.inventory_open_progress = 0
+        
+    def close_inventory(self):
+        """Close the inventory UI"""
+        self.show_inventory = False
+        
+    def is_inventory_open(self):
+        """Check if inventory is currently visible"""
+        return self.show_inventory
+        
+    def draw_map(self, screen, current_env, world_map):
+        """Draw a fullscreen map when M is pressed"""
+        if not self.show_map:
+            return
+            
+        # Create a semi-transparent background
+        map_bg = pygame.Surface((self.WIDTH, self.HEIGHT), pygame.SRCALPHA)
+        map_bg.fill((0, 0, 0, 220))  # Very dark, mostly opaque
+        screen.blit(map_bg, (0, 0))
+        
+        # Draw title
+        title_text = self.title_font.render("WORLD MAP", True, WHITE)
+        title_x = (self.WIDTH - title_text.get_width()) // 2
+        screen.blit(title_text, (title_x, 30))
+        
+        # Calculate map dimensions
+        map_width = int(self.WIDTH * 0.8)
+        map_height = int(self.HEIGHT * 0.7)
+        map_x = (self.WIDTH - map_width) // 2
+        map_y = (self.HEIGHT - map_height) // 2 + 20
+        
+        # Draw map background
+        pygame.draw.rect(screen, DARK_GRAY, (map_x, map_y, map_width, map_height))
+        pygame.draw.rect(screen, WHITE, (map_x, map_y, map_width, map_height), 2)
+        
+        # Draw map content if world_map is available
+        if world_map and hasattr(world_map, 'environments'):
+            # Scale factor for map
+            scale = min(map_width / 1000, map_height / 600) * self.map_scale
+            center_x = map_x + map_width // 2
+            center_y = map_y + map_height // 2
+            
+            # Draw connections first
+            for env_name, env_data in world_map.environments.items():
+                if hasattr(env_data, 'doors'):
+                    for door in env_data.doors:
+                        if hasattr(door, 'target_env'):
+                            target_env = door.target_env
+                            
+                            # Calculate origin position
+                            origin_x = center_x + int(env_data.position[0] * scale)
+                            origin_y = center_y + int(env_data.position[1] * scale)
+                            
+                            # Calculate target position
+                            if target_env in world_map.environments:
+                                target_pos = world_map.environments[target_env].position
+                                target_x = center_x + int(target_pos[0] * scale)
+                                target_y = center_y + int(target_pos[1] * scale)
+                                
+                                # Draw connection line
+                                pygame.draw.line(screen, LIGHT_GRAY, (origin_x, origin_y), (target_x, target_y), 2)
+            
+            # Draw each environment
+            for env_name, env_data in world_map.environments.items():
+                # Environment position
+                pos_x = center_x + int(env_data.position[0] * scale)
+                pos_y = center_y + int(env_data.position[1] * scale)
+                
+                # Determine node size and color
+                node_size = 15
+                node_color = BLUE
+                
+                # Highlight current environment
+                if env_name == current_env:
+                    node_size = 20
+                    node_color = GREEN
+                    # Draw pulsing effect
+                    pulse = (math.sin(pygame.time.get_ticks() * 0.005) + 1) * 0.5  # 0 to 1
+                    pulse_size = int(node_size + 10 * pulse)
+                    pulse_alpha = int(150 - 80 * pulse)
+                    pulse_surface = pygame.Surface((pulse_size * 2, pulse_size * 2), pygame.SRCALPHA)
+                    pygame.draw.circle(pulse_surface, (*node_color, pulse_alpha), (pulse_size, pulse_size), pulse_size)
+                    screen.blit(pulse_surface, (pos_x - pulse_size, pos_y - pulse_size))
+                
+                # Draw node
+                pygame.draw.circle(screen, node_color, (pos_x, pos_y), node_size)
+                
+                # Draw name
+                name_text = self.small_font.render(env_name.capitalize(), True, WHITE)
+                name_x = pos_x - name_text.get_width() // 2
+                name_y = pos_y + node_size + 5
+                screen.blit(name_text, (name_x, name_y))
+        
+        # Draw instructions at bottom
+        instructions = self.small_font.render("Press M or ESC to close map", True, WHITE)
+        instructions_x = (self.WIDTH - instructions.get_width()) // 2
+        screen.blit(instructions, (instructions_x, self.HEIGHT - 40))
+
+    def open_map(self):
+        """Open the fullscreen map"""
+        self.show_map = True
+        
+    def close_map(self):
+        """Close the fullscreen map"""
+        self.show_map = False
+    
+    def is_map_open(self):
+        """Check if map is currently visible"""
+        return self.show_map 
+
+    def draw_fps(self, screen, fps):
+        """Draw the FPS counter"""
+        if not SHOW_FPS:
+            return
+            
+        fps_text = self.small_font.render(f"FPS: {int(fps)}", True, WHITE)
+        screen.blit(fps_text, (self.WIDTH - fps_text.get_width() - 10, 10))
+    
+    def draw_debug_info(self, screen, player_x, player_y):
+        """Draw debug information"""
+        if not DEBUG_MODE:
+            return
+            
+        debug_text = self.small_font.render(f"Player Pos: ({int(player_x)}, {int(player_y)})", True, WHITE)
+        screen.blit(debug_text, (10, 100))
+    
+    def draw_reload_indicator(self, screen, is_reloading, reload_progress):
+        """Draw reload indicator when weapon is reloading"""
+        if not is_reloading:
+            return
+            
+        reload_text = self.font.render("RELOADING", True, YELLOW)
+        x = (self.WIDTH - reload_text.get_width()) // 2
+        y = self.HEIGHT - 100
+        screen.blit(reload_text, (x, y))
+        
+        # Progress bar
+        bar_width = 200
+        bar_height = 10
+        outline_rect = pygame.Rect((self.WIDTH - bar_width) // 2, y + 30, bar_width, bar_height)
+        fill_rect = pygame.Rect((self.WIDTH - bar_width) // 2, y + 30, 
+                               int(bar_width * reload_progress), bar_height)
+        
+        pygame.draw.rect(screen, (100, 100, 100), outline_rect)
+        pygame.draw.rect(screen, YELLOW, fill_rect)
+    
+    def draw_wave_start_text(self, screen, wave_number, progress):
+        """Draw wave start announcement with animation"""
+        # Calculate alpha (opacity) based on animation progress
+        alpha = 255
+        if progress < 0.2:  # Fade in
+            alpha = int(255 * (progress / 0.2))
+        elif progress > 0.8:  # Fade out
+            alpha = int(255 * (1 - (progress - 0.8) / 0.2))
+            
+        # Calculate y position with a bounce effect
+        base_y = self.HEIGHT // 3
+        bounce = math.sin(progress * math.pi * 2) * 20  # Bounce amplitude
+        y = base_y + bounce
+        
+        # Calculate scale based on progress (grow then shrink)
+        scale = 1.0
+        if progress < 0.5:
+            scale = 0.8 + 0.4 * (progress / 0.5)
+        else:
+            scale = 1.2 - 0.2 * ((progress - 0.5) / 0.5)
+            
+        # Render text
+        wave_text = self.title_font.render(f"WAVE {wave_number}", True, (255, 50, 50))
+        
+        # Apply scale
+        scaled_text = pygame.transform.scale(
+            wave_text, 
+            (int(wave_text.get_width() * scale), int(wave_text.get_height() * scale))
+        )
+        
+        # Apply alpha
+        scaled_text.set_alpha(alpha)
+        
+        # Draw centered text
+        x = (self.WIDTH - scaled_text.get_width()) // 2
+        screen.blit(scaled_text, (x, y))
+    
+    def draw_environment_transition_text(self, screen, text, progress):
+        """Draw text for environment transitions with a fade effect"""
+        alpha = 255
+        if progress < 0.3:  # Fade in
+            alpha = int(255 * (progress / 0.3))
+        elif progress > 0.7:  # Fade out
+            alpha = int(255 * (1 - (progress - 0.7) / 0.3))
+        
+        text_surface = self.font.render(text, True, WHITE)
+        text_surface.set_alpha(alpha)
+        x = (self.WIDTH - text_surface.get_width()) // 2
+        y = (self.HEIGHT - text_surface.get_height()) // 3
+        screen.blit(text_surface, (x, y))
+    
+    def draw_crosshair(self, screen, mouse_pos):
+        """Draw a crosshair at the mouse position for aiming"""
+        x, y = mouse_pos
+        size = 10  # Size of the crosshair
+        thickness = 2  # Thickness of the lines
+        
+        # Draw the crosshair in red
+        color = RED
+        
+        # Draw horizontal and vertical lines
+        pygame.draw.line(screen, color, (x - size, y), (x + size, y), thickness)
+        pygame.draw.line(screen, color, (x, y - size), (x, y + size), thickness)
+        
+        # Optional: add a small circle in the center for better precision
+        pygame.draw.circle(screen, color, (x, y), 2)
+        
+    def draw_stat_upgrade_menu(self, screen, stats, current_selection, upgrade_points):
+        """Draw the stat upgrade menu"""
+        # Dark semi-transparent background
+        overlay = pygame.Surface((self.WIDTH, self.HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))  # RGBA, A=200 means 80% opacity
+        screen.blit(overlay, (0, 0))
+        
+        # Title
+        title_text = self.font.render("UPGRADE STATS", True, (255, 215, 0))
+        screen.blit(title_text, ((self.WIDTH - title_text.get_width()) // 2, 50))
+        
+        # Upgrade points available
+        points_text = self.small_font.render(f"Upgrade Points: {upgrade_points}", True, WHITE)
+        screen.blit(points_text, ((self.WIDTH - points_text.get_width()) // 2, 100))
+        
+        # Stat options
+        y_start = 150
+        y_spacing = 50
+        x_center = self.WIDTH // 2
+        
+        for i, (stat, value) in enumerate(stats.items()):
+            # Format the stat name to be more readable
+            formatted_stat = stat.replace("_", " ").title()
+            
+            # Determine color based on selection
+            if i == current_selection:
+                color = (255, 215, 0)  # Gold for selected
+                # Draw selection indicator (>)
+                indicator = self.font.render(">", True, color)
+                screen.blit(indicator, (x_center - 150, y_start + i * y_spacing))
+            else:
+                color = (200, 200, 200)  # Light gray for unselected
+            
+            # Draw stat name and value
+            stat_text = self.small_font.render(f"{formatted_stat}: {value:.2f}", True, color)
+            screen.blit(stat_text, (x_center - stat_text.get_width() // 2, y_start + i * y_spacing))
+        
+        # Instructions
+        instructions_y = y_start + len(stats) * y_spacing + 30
+        
+        up_text = self.small_font.render("Up/Down: Select Stat", True, (150, 150, 150))
+        screen.blit(up_text, ((self.WIDTH - up_text.get_width()) // 2, instructions_y))
+        
+        enter_text = self.small_font.render("Enter/Space: Upgrade Selected Stat", True, (150, 150, 150))
+        screen.blit(enter_text, ((self.WIDTH - enter_text.get_width()) // 2, instructions_y + 30))
+        
+        esc_text = self.small_font.render("ESC: Return to Game", True, (150, 150, 150))
+        screen.blit(esc_text, ((self.WIDTH - esc_text.get_width()) // 2, instructions_y + 60))
+    
+    def draw_game_paused(self, screen):
+        """Draw the pause screen"""
+        # Semi-transparent overlay
+        overlay = pygame.Surface((self.WIDTH, self.HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))  # RGBA, A=150 means 60% opacity
+        screen.blit(overlay, (0, 0))
+        
+        # Paused text
+        paused_text = self.title_font.render("PAUSED", True, WHITE)
+        screen.blit(paused_text, ((self.WIDTH - paused_text.get_width()) // 2, self.HEIGHT // 3))
+        
+        # Resume instruction
+        resume_text = self.small_font.render("Press ESC to resume", True, WHITE)
+        screen.blit(resume_text, ((self.WIDTH - resume_text.get_width()) // 2, self.HEIGHT // 2)) 

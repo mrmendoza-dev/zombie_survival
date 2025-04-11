@@ -1,10 +1,9 @@
 import pygame
+from config import *
 
 # Set up display dimensions first
 WIDTH, HEIGHT = 1000, 600
-SHOW_WAVE_INFO = False
-DEBUG_MODE = False
-SHOW_FPS = False
+
 
 # Initialize pygame and its mixer first, before any other imports
 pygame.init()
@@ -26,11 +25,14 @@ pygame.display.set_caption("Zombie Survival")
 # Now import game modules after pygame is initialized
 from zombie_types import ZOMBIE_TYPES, initialize_sounds as init_zombie_sounds
 from weapon_types import WEAPON_TYPES, LETHAL_TYPES, initialize_sounds as init_weapon_sounds
-from ui.ui import GameUI
+from ui import GameUI
 from core.game_state import GameState
 from core.game_mechanics import GameMechanics
 from environments import EnvironmentManager
 from core.draw_game import GameRenderer
+from core.inventory_system import InventorySystem
+
+
 
 pickup_sound = pygame.mixer.Sound('assets/sounds/pickup.mp3')
 
@@ -77,7 +79,7 @@ zombie_horde_sound = pygame.mixer.Sound('assets/sounds/zombie-horde.mp3')
 
 # Try to load door image, or create a fallback
 try:
-    door_image = pygame.image.load('assets/general/door.png')
+    door_image = pygame.image.load('assets/objects/door.jpg')
     door_image = pygame.transform.scale(door_image, (50, 80))
 except:
     # Create a door surface as fallback
@@ -106,6 +108,10 @@ env_manager.load_environments({
     'room_music': room_music,
     'sewer_music': sewer_music
 })
+
+# Initialize the Inventory System
+inventory = InventorySystem(max_slots=20, channels=channels)
+inventory.initialize_from_default()
 
 # Game constants
 gravity = 0.5
@@ -150,7 +156,7 @@ health_refill_time = 0
 # Jump down variables
 down_key_pressed_time = 0
 down_key_press_count = 0
-DOWN_PRESS_THRESHOLD = 500  # Time in ms to detect double tap
+DOWN_PRESS_THRESHOLD = 100  # Time in ms to detect double tap
 
 def draw_game():
     # Get the current environment
@@ -212,8 +218,8 @@ def draw_game():
     # Draw UI elements
     if not game_state.game_over:
         # Draw HUD with score, health, wave info
-        game_renderer.draw_score(game_state.score, game_font)
-        game_renderer.draw_health(game_state.player_health, game_state.stats["max_health"], game_font)
+        game_renderer.draw_score(game_state.score, game_font, (255, 255, 255))
+        game_ui.draw_health_bar(screen, game_state.player_health, game_state.stats["max_health"])
         
         if SHOW_WAVE_INFO:
             game_renderer.draw_wave_info(game_state.current_wave, game_font)
@@ -283,6 +289,12 @@ def draw_game():
             current_env.name,  # Pass the current environment name
             env_manager.get_world_map()  # Pass the world map object
         )
+        
+        # Draw inventory UI if active
+        game_ui.draw_inventory(screen, inventory)
+        
+        # Draw map UI if active
+        game_ui.draw_map(screen, current_env.name, env_manager.get_world_map())
     
     # Draw game over screen if dead
     if game_state.game_over:
@@ -369,39 +381,31 @@ def check_room_interactions(keys):
     if item:
         # Process the interaction based on item type
         if item.properties['item_type'] == 'ammo':
-            # Refill all weapons
-            for weapon_type in game_state.weapon_ammo:
-                game_state.weapon_ammo[weapon_type] = WEAPON_TYPES[weapon_type].max_ammo
-            # Play sound
-            channels['pickup'].play(WEAPON_TYPES[game_state.current_weapon].sound)
+            # Add ammo pack to inventory
+            inventory.add_item('ammo_pack')
+            channels['pickup'].play(pickup_sound)
+            game_ui.show_message("Picked up Ammo Pack", 2000)
         
         elif item.properties['item_type'] == 'health':
-            # Refill health to max
-            game_state.player_health = game_state.stats["max_health"]
-            # Play sound
+            # Add health pack to inventory
+            inventory.add_item('health_pack')
             channels['pickup'].play(pickup_sound)
+            game_ui.show_message("Picked up Health Pack", 2000)
             
         elif item.properties['item_type'] == 'lethal_crate':
-            # Cycle through available lethal weapons
+            # Find next lethal in the list that we don't already have
             lethal_types = list(LETHAL_TYPES.keys())
             
-            # Find the index of the current lethal
-            current_index = 0
-            if game_state.current_lethal in lethal_types:
-                current_index = lethal_types.index(game_state.current_lethal)
-                
-            # Select the next lethal in the list (or loop back to the first)
-            next_index = (current_index + 1) % len(lethal_types)
-            game_state.current_lethal = lethal_types[next_index]
-            
-            # Give some ammo for the new lethal
-            game_state.lethal_ammo[game_state.current_lethal] = 3
-            
-            # Play sound
-            channels['pickup'].play(pickup_sound)
-            
-            # Show message
-            game_ui.show_message(f"Equipped {LETHAL_TYPES[game_state.current_lethal].name}", 2000)
+            # Add a lethal item to inventory
+            if 'molotov' not in inventory.item_database or inventory.get_lethal_quantity() < 3:
+                if 'molotov' in lethal_types:
+                    inventory.add_item('molotov', 3)
+                    channels['pickup'].play(pickup_sound)
+                    game_ui.show_message(f"Picked up Molotovs", 2000)
+                else:
+                    inventory.add_item('grenade', 3)
+                    channels['pickup'].play(pickup_sound)
+                    game_ui.show_message(f"Picked up Grenades", 2000)
         
         # Mark the item as used (starts cooldown)
         env_manager.handle_item_interaction(item)
@@ -497,6 +501,46 @@ def update_horde_sound():
 def main():
     running = True
     
+    # Set up callbacks for inventory item usage
+    def use_health_pack(item):
+        if game_state.player_health < game_state.stats["max_health"]:
+            game_state.player_health = min(game_state.stats["max_health"], game_state.player_health + item.properties.get('heal_amount', 1))
+            game_ui.show_message(f"Used Health Pack (+{item.properties.get('heal_amount', 1)} health)", 2000)
+            return True
+        game_ui.show_message("Health already full", 2000)
+        return False
+    
+    inventory.register_use_callback('health_pack', use_health_pack)
+    
+    # Initialize GOD MODE if enabled
+    if GOD_MODE:
+        # Add all weapons to inventory
+        for weapon_id in WEAPON_TYPES.keys():
+            inventory.add_item(weapon_id)
+        
+        # Add both lethal types
+        inventory.add_item('grenade', 99)
+        inventory.add_item('molotov', 99)
+        
+        # Add health packs
+        inventory.add_item('health_pack', 99)
+        
+        # Add ammo packs
+        inventory.add_item('ammo_pack', 99)
+        
+        # Max out player stats
+        game_state.stats["damage"] = 3.0
+        game_state.stats["fire_rate"] = 3.0
+        game_state.stats["reload_speed"] = 3.0
+        game_state.stats["move_speed"] = 2.0
+        game_state.stats["max_health"] = 20
+        game_state.player_health = 20
+        
+        game_ui.show_message("GOD MODE ENABLED", 3000)
+    else:
+        for weapon_id in WEAPON_TYPES.keys():
+            inventory.add_item(weapon_id)
+    
     # Preload common sounds to reduce lag
     for weapon_type in WEAPON_TYPES.values():
         weapon_type.sound.set_volume(0.4)  # Lower volume slightly
@@ -519,61 +563,160 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+                
+            # Check if the inventory UI should handle this event first
+            if game_ui.is_inventory_open():
+                if game_ui.handle_inventory_input(event, inventory):
+                    continue  # Skip other event handling if inventory handled it
+                    
+            # Check if map is open for handling map-specific keys
+            if game_ui.is_map_open():
+                if event.type == pygame.KEYDOWN and (event.key == pygame.K_m or event.key == pygame.K_ESCAPE):
+                    game_ui.close_map()
+                    continue
+                    
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_1:
-                    game_state.current_weapon = 'pistol'
+                    # Equip pistol if available
+                    for i, slot in enumerate(inventory.slots):
+                        if slot.item and slot.item.id == 'pistol':
+                            inventory.equip_item(i)
+                            game_state.current_weapon = 'pistol'
+                            break
                 elif event.key == pygame.K_2:
-                    game_state.current_weapon = 'shotgun'
+                    # Equip shotgun if available
+                    for i, slot in enumerate(inventory.slots):
+                        if slot.item and slot.item.id == 'shotgun':
+                            inventory.equip_item(i)
+                            game_state.current_weapon = 'shotgun'
+                            break
                 elif event.key == pygame.K_3:
-                    game_state.current_weapon = 'smg'
+                    # Equip SMG if available
+                    for i, slot in enumerate(inventory.slots):
+                        if slot.item and slot.item.id == 'smg':
+                            inventory.equip_item(i)
+                            game_state.current_weapon = 'smg'
+                            break
                 elif event.key == pygame.K_4:
-                    game_state.current_weapon = 'ar'
+                    # Equip assault rifle if available
+                    for i, slot in enumerate(inventory.slots):
+                        if slot.item and slot.item.id == 'ar':
+                            inventory.equip_item(i)
+                            game_state.current_weapon = 'ar'
+                            break
                 elif event.key == pygame.K_5:
-                    game_state.current_weapon = 'sniper'
-                    
+                    # Equip sniper if available
+                    for i, slot in enumerate(inventory.slots):
+                        if slot.item and slot.item.id == 'sniper':
+                            inventory.equip_item(i)
+                            game_state.current_weapon = 'sniper'
+                            break
                 elif event.key == pygame.K_6:
-                    game_state.current_weapon = 'grenade_launcher'
+                    # Equip grenade launcher if available
+                    for i, slot in enumerate(inventory.slots):
+                        if slot.item and slot.item.id == 'grenade_launcher':
+                            inventory.equip_item(i)
+                            game_state.current_weapon = 'grenade_launcher'
+                            break
                 elif event.key == pygame.K_f:
-                    game_mechanics.throw_lethal(mouse_pos)
+                    # Throw current lethal equipment
+                    lethal = inventory.get_equipped_lethal()
+                    if lethal and inventory.get_lethal_quantity() > 0:
+                        game_state.current_lethal = lethal.id
+                        game_mechanics.throw_lethal(mouse_pos)
+                        # Reduce the lethal count after throwing
+                        if inventory.current_lethal is not None:
+                            inventory.slots[inventory.current_lethal].quantity -= 1
+                            if inventory.slots[inventory.current_lethal].quantity <= 0:
+                                # Auto-cycle to next lethal if available
+                                inventory.cycle_lethal()
+                elif event.key == pygame.K_h:
+                    # Use health pack from inventory
+                    for slot_idx in inventory.quick_slots['healing']:
+                        if inventory.slots[slot_idx].item and inventory.slots[slot_idx].item.id == 'health_pack':
+                            if inventory.use_item(slot_idx):
+                                break
                 elif event.key == pygame.K_q and game_state.game_over:
                     running = False
                 elif event.key == pygame.K_e:
                     # For item interactions
                     check_room_interactions(keys)
-                elif event.key == pygame.K_u:
-                    # Toggle upgrades menu during intermission
-                    game_state.toggle_upgrades_menu()
+                elif event.key == pygame.K_m:
+                    # Show map (changed from U key)
+                    game_ui.open_map()
+                elif event.key == pygame.K_i:
+                    # Toggle inventory screen
+                    if game_ui.is_inventory_open():
+                        game_ui.close_inventory()
+                    else:
+                        game_ui.open_inventory()
                 elif event.key == pygame.K_UP:
-                    # Select previous upgrade
-                    game_state.select_prev_upgrade()
+                    # Only handle UP for upgrades if that menu is open
+                    if game_state.show_upgrades:
+                        game_state.select_prev_upgrade()
                 elif event.key == pygame.K_DOWN:
-                    # Select next upgrade
-                    game_state.select_next_upgrade()
+                    # Only handle DOWN for upgrades if that menu is open
+                    if game_state.show_upgrades:
+                        game_state.select_next_upgrade()
                 elif event.key == pygame.K_SPACE and game_state.show_upgrades:
                     # Purchase selected upgrade
                     if game_state.purchase_upgrade():
                         # Play purchase sound
                         channels['pickup'].play(pickup_sound)
                 elif event.key == pygame.K_r and not game_state.in_room and not game_state.game_over:
-                    # Manual weapon reload with R key
-                    if game_state.reload_weapon(channels):
-                        game_ui.show_message("Reloading...")
+                    # Manual weapon reload
+                    if inventory.reload_weapon():
+                        # Reset fire time to allow shooting immediately after reload
+                        game_state.last_fire_time = 0
+                        game_ui.show_message("Reloading...", 2000)
                 elif event.key == pygame.K_ESCAPE:
-                    # Toggle pause state
-                    game_state.paused = not game_state.paused
-                    if game_state.paused:
-                        # Pause the music
-                        channels['music'].pause()
+                    # If inventory or map is open, close it first
+                    if game_ui.is_inventory_open():
+                        game_ui.close_inventory()
+                    elif game_ui.is_map_open():
+                        game_ui.close_map()
                     else:
-                        # Resume the music
-                        channels['music'].unpause()
+                        # Otherwise toggle pause state
+                        game_state.paused = not game_state.paused
+                        if game_state.paused:
+                            # Pause the music
+                            channels['music'].pause()
+                        else:
+                            # Resume the music
+                            channels['music'].unpause()
+                elif event.key == pygame.K_c:
+                    # Cycle weapons
+                    new_weapon_idx = inventory.cycle_weapon()
+                    if new_weapon_idx is not None:
+                        game_state.current_weapon = inventory.slots[new_weapon_idx].item.id
+                        game_ui.show_message(f"Switched to {inventory.slots[new_weapon_idx].item.name}", 1000)
+                elif event.key == pygame.K_g:
+                    # Cycle lethal equipment
+                    new_lethal_idx = inventory.cycle_lethal()
+                    if new_lethal_idx is not None:
+                        game_state.current_lethal = inventory.slots[new_lethal_idx].item.id
+                        game_ui.show_message(f"Switched to {inventory.slots[new_lethal_idx].item.name}", 1000)
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 # Handle mouse button presses
                 if event.button == 3:  # Right click for grenade
-                    game_mechanics.throw_lethal(mouse_pos)
+                    lethal = inventory.get_equipped_lethal()
+                    if lethal and inventory.get_lethal_quantity() > 0:
+                        game_state.current_lethal = lethal.id
+                        game_mechanics.throw_lethal(mouse_pos)
+                        # Reduce the lethal count after throwing
+                        if inventory.current_lethal is not None:
+                            inventory.slots[inventory.current_lethal].quantity -= 1
+                            if inventory.slots[inventory.current_lethal].quantity <= 0:
+                                # Auto-cycle to next lethal if available
+                                inventory.cycle_lethal()
 
         # Check for restart
         if game_state.should_restart(keys):
+            continue
+
+        # Skip other updates if inventory or map is open
+        if game_ui.is_inventory_open() or game_ui.is_map_open():
+            draw_game()
             continue
 
         # Update environment manager
@@ -640,6 +783,17 @@ def main():
                 # Only handle player movement when in safe areas (room or rooftop), no combat
                 game_mechanics.move_player(keys, current_env.platforms)
             else:
+                # Get current equipped weapon stats for game mechanics
+                equipped_weapon = inventory.get_equipped_weapon()
+                if equipped_weapon:
+                    # Sync weapon ammo between inventory and game state
+                    game_state.weapon_ammo[game_state.current_weapon] = equipped_weapon.current_ammo
+                    
+                    # In GOD MODE, always keep weapons fully loaded
+                    if GOD_MODE:
+                        equipped_weapon.current_ammo = equipped_weapon.max_ammo
+                        game_state.weapon_ammo[game_state.current_weapon] = equipped_weapon.max_ammo
+
                 # Full gameplay when in any combat area (building or street)
                 game_mechanics.move_player(keys, current_env.platforms, game_state.stats["move_speed"])
                 game_mechanics.handle_shooting(keys, mouse_buttons, mouse_pos)
@@ -647,6 +801,10 @@ def main():
                 game_mechanics.move_zombies()
                 game_mechanics.update_lethals(current_env.platforms)
                 game_mechanics.check_collisions()
+                
+                # Sync ammo count from game mechanics back to inventory
+                if equipped_weapon and game_state.current_weapon in game_state.weapon_ammo:
+                    equipped_weapon.current_ammo = game_state.weapon_ammo[game_state.current_weapon]
                 
                 # Only spawn during active wave periods and not in safe areas
                 if game_state.wave_active and not game_state.in_room:
