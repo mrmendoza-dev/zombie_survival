@@ -108,7 +108,7 @@ class GameUI:
             # Increase offset for next message
             y_offset += 40
 
-    def draw_health_bar(self, screen, player_health, max_health)awawawd:
+    def draw_health_bar(self, screen, player_health, max_health):
         # Calculate health bar width to be about 1/3 of screen width
         
         health_bar_width = int(self.WIDTH / 3)

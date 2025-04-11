@@ -11,6 +11,7 @@ from core.weapon_system import WeaponSystem
 from core.enemy_system import EnemySystem
 from core.inventory_system import InventorySystem
 from weapon_types import WEAPON_TYPES, LETHAL_TYPES
+from config import *
 
 
 class GameSystem:
@@ -35,9 +36,9 @@ class GameSystem:
             screen_height=screen_height,
             player_width=50,
             player_height=50,
-            gravity=0.5,
-            player_speed=4,
-            jump_strength=10,
+            gravity=GRAVITY,
+            player_speed=PLAYER_SPEED,
+            jump_strength=JUMP_STRENGTH,
             max_health=100
         )
         
@@ -46,7 +47,7 @@ class GameSystem:
             screen_width=screen_width,
             screen_height=screen_height,
             channels=channels,
-            gravity=0.5
+            gravity=GRAVITY
         )
         
         # Initialize enemy system
@@ -56,8 +57,8 @@ class GameSystem:
             player_width=50,
             player_height=50,
             channels=channels,
-            gravity=0.5,
-            floor_height=30
+            gravity=GRAVITY,
+            floor_height=FLOOR_HEIGHT
         )
         
         # Initialize inventory system
@@ -76,7 +77,7 @@ class GameSystem:
         
         # Wave system
         self.current_wave = 1
-        self.wave_time = 30  # seconds per wave
+        self.wave_time = WAVE_TIME  # seconds per wave
         self.wave_timer = self.wave_time * 1000  # convert to milliseconds
         self.wave_start_time = pygame.time.get_ticks()
         self.wave_active = True
@@ -85,11 +86,11 @@ class GameSystem:
         self.base_spawn_rate = 1.0
         
         # Intermission system
-        self.intermission_time = 60  # seconds for intermission between waves
+        self.intermission_time = INTERMISSION_TIME  # seconds for intermission between waves
         self.intermission_timer = self.intermission_time * 1000  # convert to milliseconds
         self.intermission_start_time = 0
         self.intermission_end = 0
-        self.WAVE_INTERMISSION_MS = 60000  # 60 seconds in milliseconds
+        self.WAVE_INTERMISSION_MS = INTERMISSION_TIME * 1000  # 60 seconds in milliseconds
         
         # Upgrades system
         self.show_upgrades = False
@@ -98,7 +99,7 @@ class GameSystem:
         
         # Environment tracking
         self.in_safe_room = False
-        self.current_environment = 'building'
+        self.current_environment = 'starting'
     
     def reset(self):
         """Reset the entire game to initial state"""

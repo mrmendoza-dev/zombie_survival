@@ -11,7 +11,7 @@ class LakeEnvironment(Environment):
         
         # Load environment-specific assets
         self.background = pygame.image.load('assets/backgrounds/lake-bg.jpg')
-        self.music = pygame.mixer.Sound('assets/music/default-music.wav')
+        self.music = pygame.mixer.Sound('assets/music/forest-music.wav')
         
         # Calculate floor height and dimensions
         floor_height = 30
